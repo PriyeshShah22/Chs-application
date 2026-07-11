@@ -36,10 +36,15 @@ class ComplaintsScreen extends ConsumerWidget {
                           _iconFor(c.priority),
                           color: _colorForPriority(c.priority),
                         ),
-                        title: Text(c.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: Text('${c.status} · ${DateFormat.yMMMd().add_jm().format(DateTime.parse(c.createdAt))}'),
+                        title: Text(c.title,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text(
+                            '${c.status} · ${DateFormat.yMMMd().add_jm().format(DateTime.parse(c.createdAt))}'),
                         trailing: c.aiCategory != null
-                            ? Chip(label: Text(c.aiCategory!, style: const TextStyle(fontSize: 11)))
+                            ? Chip(
+                                label: Text(c.aiCategory!,
+                                    style: const TextStyle(fontSize: 11)))
                             : null,
                       ),
                     );
@@ -84,16 +89,26 @@ class ComplaintsScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       builder: (ctx) => Padding(
-        padding: EdgeInsets.only(left: 16, right: 16, top: 16, bottom: MediaQuery.of(ctx).viewInsets.bottom + 16),
+        padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('New Complaint', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const Text('New Complaint',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
-            TextField(controller: titleC, decoration: const InputDecoration(labelText: 'Title')),
+            TextField(
+                controller: titleC,
+                decoration: const InputDecoration(labelText: 'Title')),
             const SizedBox(height: 8),
-            TextField(controller: descC, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
+            TextField(
+                controller: descC,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: 'Description')),
             const SizedBox(height: 8),
             StatefulBuilder(builder: (ctx, setSt) {
               return DropdownButtonFormField<String>(
@@ -112,8 +127,10 @@ class ComplaintsScreen extends ConsumerWidget {
             FilledButton(
               onPressed: () async {
                 Navigator.pop(ctx);
-                await ref.read(complaintListProvider.notifier)
-                    .create(title: titleC.text, description: descC.text, priority: priority);
+                await ref.read(complaintListProvider.notifier).create(
+                    title: titleC.text,
+                    description: descC.text,
+                    priority: priority);
               },
               child: const Text('Submit'),
             ),

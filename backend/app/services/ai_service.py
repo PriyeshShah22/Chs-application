@@ -16,15 +16,20 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.bill import Bill, BillStatus
+from app.models.ai_action import AIAction, AIActionRisk, AIActionStatus
+from app.models.audit import AuditLog
 from app.models.chat import ChatMessage
 from app.models.complaint import Complaint, ComplaintStatus
 from app.models.notice import Notice
 from app.models.resident import Resident
 from app.models.user import User
 from app.models.visitor import Visitor, VisitorStatus
+from app.schemas.complaint import ComplaintCreate
+from app.services.complaint_service import classify_complaint, create_complaint
 
 
 _INTENTS = {
+    "create_complaint": [r"no water", r"not working", r"broken", r"leak", r"garbage", r"streetlight", r"complain", r"report (?:an? )?issue"],
     "maintenance_pending": [r"\bmaintenance\b", r"outstanding", r"unpaid", r"due bill"],
     "complaint_history": [r"complaint", r"issue", r"ticket"],
     "last_payment": [r"last payment", r"recent payment", r"paid"],
@@ -152,6 +157,69 @@ def _handle_intent(intent: str, db: Session, user: User) -> Dict[str, Any]:
     return data
 
 
+def _complaint_proposal(db: Session, user: User, message: str) -> Dict[str, Any]:
+    resident = user.resident
+    if not user.society_id or not resident:
+        return {
+            "intent": "create_complaint",
+            "reply": "I need a linked household before I can submit this. You can use the manual form or ask a Panchayat volunteer for help.",
+            "data": {"needs": ["household"]},
+            "available_actions": ["open_manual_complaint", "request_human_help"],
+        }
+
+    category = classify_complaint(message)
+    title = {
+        "Plumbing": "Water or plumbing problem",
+        "Electrical": "Electricity or streetlight problem",
+        "Cleaning": "Cleaning or garbage problem",
+        "Security": "Security concern",
+    }.get(category, "Community service problem")
+    payload = {
+        "title": title,
+        "description": message.strip(),
+        "society_id": user.society_id,
+        "flat_id": resident.flat_id,
+        "priority": "high" if any(w in message.lower() for w in ("danger", "urgent", "flood", "fire")) else "medium",
+    }
+    expires_at = datetime.utcnow() + timedelta(minutes=15)
+    summary = f"Submit a {category.lower()} complaint for your household: {message.strip()}"
+    action = AIAction(
+        requester_id=user.id,
+        action_type="create_complaint",
+        risk=AIActionRisk.medium,
+        status=AIActionStatus.awaiting_confirmation,
+        payload_json=json.dumps(payload),
+        summary=summary,
+        expires_at=expires_at,
+    )
+    db.add(action)
+    db.flush()
+    db.add(AuditLog(
+        actor_id=user.id,
+        action="ai_action_proposed",
+        entity_type="ai_action",
+        entity_id=action.id,
+        details="type=create_complaint;risk=medium",
+    ))
+    db.commit()
+    db.refresh(action)
+    return {
+        "intent": "create_complaint",
+        "reply": "I understood this as a complaint. Please check the details below. I will submit it only after you confirm.",
+        "data": {"suggested_category": category},
+        "action": {
+            "id": action.id,
+            "action_type": action.action_type,
+            "risk": action.risk.value,
+            "status": action.status.value,
+            "summary": action.summary,
+            "fields": payload,
+            "expires_at": action.expires_at,
+        },
+        "available_actions": ["confirm", "cancel", "open_manual_complaint", "request_human_help"],
+    }
+
+
 def _natural_reply(intent: str, data: Dict[str, Any], user: User) -> str:
     role = "Admin" if user.is_superuser else next(iter(user.role_names), "User")
 
@@ -196,6 +264,13 @@ def _natural_reply(intent: str, data: Dict[str, Any], user: User) -> str:
 def chat(db: Session, user: User, message: str) -> Dict[str, Any]:
     """Main entry-point: classify, fetch permission-aware data, reply."""
     intent = _classify(message)
+    if intent == "create_complaint":
+        result = _complaint_proposal(db, user, message)
+        reply = result["reply"]
+        db.add(ChatMessage(user_id=user.id, role="user", content=message, intent=intent))
+        db.add(ChatMessage(user_id=user.id, role="assistant", content=reply, intent=intent))
+        db.commit()
+        return result
     data = _handle_intent(intent, db, user)
     reply = _natural_reply(intent, data, user)
 
@@ -204,25 +279,69 @@ def chat(db: Session, user: User, message: str) -> Dict[str, Any]:
     db.add(ChatMessage(user_id=user.id, role="assistant", content=reply, intent=intent))
     db.commit()
 
-    return {"intent": intent, "reply": reply, "data": data}
+    return {"intent": intent, "reply": reply, "data": data, "available_actions": ["request_human_help"]}
 
 
-def classify_complaint(text: str) -> str:
-    """Best-effort category guess from text. Returns the *name*, not id."""
-    text = text.lower()
-    bucket = {
-        "Plumbing": ["leak", "tap", "pipe", "water", "drain", "toilet", "sink"],
-        "Electrical": ["light", "bulb", "power", "electric", "fuse", "switch", "fan"],
-        "Cleaning": ["dirty", "garbage", "trash", "clean", "dust", "litter"],
-        "Security": ["guard", "security", "theft", "camera", "cctv", "suspicious"],
-        "Parking": ["park", "vehicle", "car", "bike"],
-        "Lift": ["lift", "elevator"],
-        "Pest Control": ["pest", "insect", "cockroach", "rat", "mosquito"],
-        "Noise": ["noise", "loud", "music", "party"],
-    }
-    best, hits = "General", 0
-    for cat, kws in bucket.items():
-        score = sum(1 for w in kws if w in text)
-        if score > hits:
-            best, hits = cat, score
-    return best
+def confirm_action(db: Session, user: User, action_id: int) -> Dict[str, Any]:
+    action = db.get(AIAction, action_id)
+    if not action:
+        raise LookupError("Action not found")
+    if action.requester_id != user.id:
+        raise PermissionError("This action belongs to another user")
+    if action.status != AIActionStatus.awaiting_confirmation:
+        raise ValueError(f"Action cannot be confirmed from state '{action.status.value}'")
+    if action.expires_at <= datetime.utcnow():
+        action.status = AIActionStatus.expired
+        db.commit()
+        raise TimeoutError("This action expired. Please ask the assistant again.")
+
+    action.status = AIActionStatus.executing
+    action.confirmed_at = datetime.utcnow()
+    db.flush()
+    try:
+        if action.action_type != "create_complaint":
+            raise ValueError("Unsupported action type")
+        complaint = create_complaint(
+            db, user, ComplaintCreate(**json.loads(action.payload_json)), source="assistant"
+        )
+        action = db.get(AIAction, action_id)
+        action.status = AIActionStatus.completed
+        action.result_entity_type = "complaint"
+        action.result_entity_id = complaint.id
+        db.add(AuditLog(
+            actor_id=user.id,
+            action="ai_action_completed",
+            entity_type="ai_action",
+            entity_id=action.id,
+            details=f"complaint_id={complaint.id}",
+        ))
+        db.commit()
+        return {
+            "action_id": action.id,
+            "status": action.status.value,
+            "message": f"Complaint #{complaint.id} was submitted. You can track it in Complaints.",
+            "entity_type": "complaint",
+            "entity_id": complaint.id,
+        }
+    except Exception:
+        db.rollback()
+        action = db.get(AIAction, action_id)
+        if action:
+            action.status = AIActionStatus.failed
+            action.failure_code = "PROCESSING_FAILED"
+            db.commit()
+        raise
+
+
+def cancel_action(db: Session, user: User, action_id: int) -> Dict[str, Any]:
+    action = db.get(AIAction, action_id)
+    if not action:
+        raise LookupError("Action not found")
+    if action.requester_id != user.id:
+        raise PermissionError("This action belongs to another user")
+    if action.status != AIActionStatus.awaiting_confirmation:
+        raise ValueError("Only a pending action can be cancelled")
+    action.status = AIActionStatus.cancelled
+    db.add(AuditLog(actor_id=user.id, action="ai_action_cancelled", entity_type="ai_action", entity_id=action.id))
+    db.commit()
+    return {"action_id": action.id, "status": "cancelled", "message": "The action was cancelled."}

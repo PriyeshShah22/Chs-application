@@ -9,7 +9,11 @@ class AuthState {
   final bool initializing;
   final String? error;
   const AuthState({this.user, this.initializing = true, this.error});
-  AuthState copyWith({AppUser? user, bool? initializing, String? error, bool clearError = false}) =>
+  AuthState copyWith(
+          {AppUser? user,
+          bool? initializing,
+          String? error,
+          bool clearError = false}) =>
       AuthState(
         user: user ?? this.user,
         initializing: initializing ?? this.initializing,
@@ -31,7 +35,9 @@ class AuthController extends StateNotifier<AuthState> {
     }
     try {
       final res = await _api.dio.get('/auth/me');
-      state = AuthState(user: AppUser.fromJson(res.data as Map<String, dynamic>), initializing: false);
+      state = AuthState(
+          user: AppUser.fromJson(res.data as Map<String, dynamic>),
+          initializing: false);
     } catch (_) {
       state = const AuthState(initializing: false);
     }
@@ -40,11 +46,13 @@ class AuthController extends StateNotifier<AuthState> {
   Future<bool> login(String email, String password) async {
     state = state.copyWith(clearError: true);
     try {
-      final res = await _api.dio.post('/auth/login', data: {'email': email, 'password': password});
+      final res = await _api.dio
+          .post('/auth/login', data: {'email': email, 'password': password});
       final data = res.data as Map<String, dynamic>;
       _storage.accessToken = data['access_token'] as String?;
       _storage.refreshToken = data['refresh_token'] as String?;
-      state = AuthState(user: AppUser.fromJson(data['user'] as Map<String, dynamic>));
+      state = AuthState(
+          user: AppUser.fromJson(data['user'] as Map<String, dynamic>));
       return true;
     } catch (e) {
       state = state.copyWith(error: 'Invalid credentials');
@@ -52,23 +60,20 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  Future<bool> register(String fullName, String email, String phone, String password) async {
+  Future<bool> requestToJoin(
+      String fullName, String email, String phone, String dateOfBirth, String password) async {
     state = state.copyWith(clearError: true);
     try {
-      final res = await _api.dio.post('/auth/register', data: {
+      await _api.dio.post('/auth/join-requests', data: {
         'full_name': fullName,
         'email': email,
         'phone': phone.isEmpty ? null : phone,
+        'date_of_birth': dateOfBirth,
         'password': password,
-        'role_names': ['resident'],
       });
-      final data = res.data as Map<String, dynamic>;
-      _storage.accessToken = data['access_token'] as String?;
-      _storage.refreshToken = data['refresh_token'] as String?;
-      state = AuthState(user: AppUser.fromJson(data['user'] as Map<String, dynamic>));
       return true;
     } catch (e) {
-      state = state.copyWith(error: 'Registration failed');
+      state = state.copyWith(error: 'Could not send your request');
       return false;
     }
   }

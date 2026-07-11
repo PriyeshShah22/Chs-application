@@ -24,7 +24,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: authNotifier,
     redirect: (context, state) {
       final auth = ref.read(authControllerProvider);
-      final loggingIn = state.matchedLocation == '/login' || state.matchedLocation == '/register';
+      final loggingIn = state.matchedLocation == '/login' ||
+          state.matchedLocation == '/register';
       if (auth.initializing) return '/splash';
       if (auth.user == null) return loggingIn ? null : '/login';
       if (loggingIn) return '/';
@@ -38,9 +39,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state, child) => HomeShell(child: child),
         routes: [
           GoRoute(path: '/', builder: (_, __) => const DashboardScreen()),
-          GoRoute(path: '/complaints', builder: (_, __) => const ComplaintsScreen()),
+          GoRoute(
+              path: '/complaints',
+              builder: (_, __) => const ComplaintsScreen()),
           GoRoute(path: '/bills', builder: (_, __) => const BillsScreen()),
-          GoRoute(path: '/visitors', builder: (_, __) => const VisitorsScreen()),
+          GoRoute(
+              path: '/visitors', builder: (_, __) => const VisitorsScreen()),
           GoRoute(path: '/notices', builder: (_, __) => const NoticesScreen()),
           GoRoute(path: '/ai', builder: (_, __) => const AIScreen()),
           GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),

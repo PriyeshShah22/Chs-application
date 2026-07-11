@@ -2,8 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-final tabs = ['/', '/complaints', '/bills', '/visitors', '/notices', '/ai', '/profile'];
-final labels = ['Home', 'Complaints', 'Bills', 'Visitors', 'Notices', 'AI', 'Profile'];
+final tabs = [
+  '/',
+  '/complaints',
+  '/bills',
+  '/visitors',
+  '/notices',
+  '/ai',
+  '/profile'
+];
+final labels = [
+  'Home',
+  'Complaints',
+  'Bills',
+  'Visitors',
+  'Notices',
+  'AI',
+  'Profile'
+];
 final icons = [
   Icons.dashboard,
   Icons.report_problem,
@@ -27,7 +43,8 @@ class HomeShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final loc = GoRouter.of(context).routerDelegate.currentConfiguration.uri.toString();
+    final loc =
+        GoRouter.of(context).routerDelegate.currentConfiguration.uri.toString();
     final i = _indexFromLocation(loc);
     return Scaffold(
       body: child,

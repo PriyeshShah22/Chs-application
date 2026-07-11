@@ -1,101 +1,36 @@
-import { Box, Button, Paper, Stack, TextField, Typography, Avatar } from "@mui/material";
-import SmartToyIcon from "@mui/icons-material/SmartToy";
-import PersonIcon from "@mui/icons-material/Person";
-import SendIcon from "@mui/icons-material/Send";
 import { useEffect, useRef, useState } from "react";
+import { Alert, Box, Button, Chip, CircularProgress, Divider, IconButton, Paper, Stack, TextField, Typography } from "@mui/material";
+import { CancelOutlined, CheckCircleRounded, HearingRounded, KeyboardRounded, MicRounded, PersonOutlineRounded, SendRounded, StopCircleRounded, VolumeUpRounded } from "@mui/icons-material";
 import { api } from "../api/client";
 
-interface ChatMsg {
-  role: "user" | "assistant";
-  content: string;
-  intent?: string | null;
-  data?: any;
-}
+interface Proposal { id: number; action_type: string; risk: string; status: string; summary: string; fields: Record<string, unknown>; expires_at: string }
+interface Message { role: "user" | "assistant"; content: string; action?: Proposal; result?: { status: string; entity_id?: number } }
+type SpeechRecognitionLike = { lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void; onresult: ((event: any) => void) | null; onend: (() => void) | null; onerror: (() => void) | null };
 
-const SUGGESTIONS = [
-  "Show my pending maintenance",
-  "What's my complaint history?",
-  "When was my last payment?",
-  "Who visited today?",
-  "What notices were posted this week?",
-];
+const prompts = ["There has been no water near my house since morning", "Do I owe any maintenance money?", "Show my recent complaints", "What are the latest notices?"];
 
 export default function AI() {
-  const [messages, setMessages] = useState<ChatMsg[]>([
-    { role: "assistant", content: "Hi! Ask me about your bills, complaints, visitors, or notices." },
-  ]);
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<Message[]>([{ role: "assistant", content: "Namaste. Tell me what you need in your own words. I can check official records and prepare permitted actions for your confirmation." }]);
+  const [input, setInput] = useState(""); const [busy, setBusy] = useState(false); const [listening, setListening] = useState(false);
+  const [language, setLanguage] = useState("en-IN"); const [voiceError, setVoiceError] = useState<string | null>(null); const endRef = useRef<HTMLDivElement>(null); const recognition = useRef<SpeechRecognitionLike | null>(null);
+  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [messages, busy]);
 
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  async function send(text = input) { if (!text.trim() || busy) return; setMessages((m) => [...m, { role: "user", content: text.trim() }]); setInput(""); setBusy(true); try { const { data } = await api.post("/ai/chat", { message: text.trim(), language: language.slice(0, 2) }); setMessages((m) => [...m, { role: "assistant", content: data.reply, action: data.action }]); } catch (e: any) { setMessages((m) => [...m, { role: "assistant", content: e?.response?.data?.detail || "I could not reach the service. Please retry or use the manual form." }]); } finally { setBusy(false); } }
+  async function decide(action: Proposal, decision: "confirm" | "cancel") { setBusy(true); try { const { data } = await api.post(`/ai/actions/${action.id}/${decision}`); setMessages((m) => [...m, { role: "assistant", content: data.message, result: data }]); } catch (e: any) { setMessages((m) => [...m, { role: "assistant", content: e?.response?.data?.detail || "That action could not be completed. Nothing was changed." }]); } finally { setBusy(false); } }
+  function listen() { setVoiceError(null); const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition; if (!Ctor) { setVoiceError("Voice input is not available in this browser. You can type the same request below."); return; } const r: SpeechRecognitionLike = new Ctor(); recognition.current = r; r.lang = language; r.interimResults = false; r.continuous = false; r.onresult = (event) => { setInput(event.results[0][0].transcript); setListening(false); }; r.onend = () => setListening(false); r.onerror = () => { setListening(false); setVoiceError("I could not hear that clearly. Please try again or type your request."); }; setListening(true); r.start(); }
+  function stop() { recognition.current?.stop(); setListening(false); }
+  function speak(text: string) { if (!("speechSynthesis" in window)) { setVoiceError("Read aloud is unavailable in this browser."); return; } window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = language; window.speechSynthesis.speak(u); }
 
-  async function send(text: string) {
-    if (!text.trim()) return;
-    setMessages((m) => [...m, { role: "user", content: text }]);
-    setInput("");
-    setBusy(true);
-    try {
-      const res = await api.post("/ai/chat", { message: text });
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: res.data.reply, intent: res.data.intent, data: res.data.data },
-      ]);
-    } catch (e: any) {
-      setMessages((m) => [...m, { role: "assistant", content: e?.response?.data?.detail || "Sorry, I couldn't process that." }]);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)" }}>
-      <Typography variant="h4">AI Assistant</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Permission-aware assistant. Try one of the prompts below.
-      </Typography>
-
-      <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: "wrap" }}>
-        {SUGGESTIONS.map((s) => (
-          <Button key={s} size="small" variant="outlined" onClick={() => send(s)}>{s}</Button>
-        ))}
-      </Stack>
-
-      <Paper ref={scrollRef} sx={{ flex: 1, p: 2, overflow: "auto", borderRadius: 3 }}>
-        <Stack spacing={2}>
-          {messages.map((m, i) => (
-            <Stack key={i} direction="row" spacing={2} alignItems="flex-start">
-              <Avatar sx={{ bgcolor: m.role === "assistant" ? "primary.main" : "secondary.main" }}>
-                {m.role === "assistant" ? <SmartToyIcon /> : <PersonIcon />}
-              </Avatar>
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="caption" color="text.secondary">
-                  {m.role === "assistant" ? "Assistant" : "You"}
-                  {m.intent && ` · intent: ${m.intent}`}
-                </Typography>
-                <Paper sx={{ p: 1.5, mt: 0.5, bgcolor: "background.default" }}>
-                  <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>{m.content}</Typography>
-                </Paper>
-              </Box>
-            </Stack>
-          ))}
-        </Stack>
+  return <Stack spacing={3} sx={{ maxWidth: 1120, mx: "auto" }}>
+    <Box><Chip label="Secure assistant" color="success" size="small" sx={{ mb: 1 }} /><Typography variant="h3" sx={{ fontSize: { xs: "2rem", md: "2.8rem" } }}>Ask Panchayat</Typography><Typography color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>Speak or type naturally. The assistant checks your permissions, shows what it plans to do, and asks before making changes.</Typography></Box>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0,1fr) 300px" }, gap: 3 }}>
+      <Paper sx={{ overflow: "hidden", minHeight: 590, display: "flex", flexDirection: "column" }}>
+        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ p: 2, borderBottom: 1, borderColor: "divider" }}><Box sx={{ width: 42, height: 42, borderRadius: "50%", bgcolor: "primary.main", color: "primary.contrastText", display: "grid", placeItems: "center" }}><HearingRounded /></Box><Box sx={{ flex: 1 }}><Typography fontWeight={750}>Panchayat Assistant</Typography><Typography variant="caption" color="text.secondary">Uses only information you are allowed to access</Typography></Box><TextField select SelectProps={{ native: true }} size="small" value={language} onChange={(e) => setLanguage(e.target.value)} inputProps={{ "aria-label": "Assistant language" }}><option value="en-IN">English</option><option value="hi-IN">हिन्दी</option><option value="mr-IN">मराठी</option><option value="gu-IN">ગુજરાતી</option></TextField></Stack>
+        <Stack spacing={2} sx={{ p: { xs: 2, md: 3 }, flex: 1, overflowY: "auto", maxHeight: 500 }} aria-live="polite">
+          {messages.map((m, i) => <Box key={i} sx={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "88%" }}><Paper elevation={0} sx={{ p: 2, bgcolor: m.role === "user" ? "primary.main" : "action.hover", color: m.role === "user" ? "primary.contrastText" : "text.primary", border: 0 }}><Typography>{m.content}</Typography>{m.role === "assistant" && <IconButton size="small" aria-label="Read this response aloud" onClick={() => speak(m.content)} sx={{ mt: .5 }}><VolumeUpRounded fontSize="small" /></IconButton>}</Paper>{m.action && <Paper sx={{ mt: 1.5, p: 2.5, borderLeft: 5, borderColor: "secondary.main" }}><Stack direction="row" justifyContent="space-between"><Typography variant="overline" fontWeight={800}>Action to review</Typography><Chip label={`${m.action.risk} risk`} color="warning" size="small" /></Stack><Typography variant="h6" sx={{ mt: .5 }}>{m.action.summary}</Typography><Divider sx={{ my: 1.5 }} />{Object.entries(m.action.fields).filter(([k]) => !["society_id", "flat_id"].includes(k)).map(([k, v]) => <Stack key={k} direction="row" spacing={2} sx={{ py: .5 }}><Typography variant="body2" color="text.secondary" sx={{ width: 90, textTransform: "capitalize" }}>{k.replace("_", " ")}</Typography><Typography variant="body2" fontWeight={650}>{String(v)}</Typography></Stack>)}<Alert severity="info" sx={{ mt: 1.5 }}>Nothing will be submitted until you confirm.</Alert><Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mt: 2 }}><Button variant="contained" startIcon={<CheckCircleRounded />} onClick={() => decide(m.action!, "confirm")} disabled={busy}>Confirm and submit</Button><Button variant="outlined" color="inherit" startIcon={<CancelOutlined />} onClick={() => decide(m.action!, "cancel")} disabled={busy}>Cancel</Button></Stack></Paper>}</Box>)}{busy && <Stack direction="row" spacing={1.5} alignItems="center"><CircularProgress size={20} /><Typography color="text.secondary">Checking the right service…</Typography></Stack>}<div ref={endRef} /></Stack>
+        <Box sx={{ p: 2, borderTop: 1, borderColor: "divider" }}>{voiceError && <Alert severity="warning" sx={{ mb: 1.5 }}>{voiceError}</Alert>}<Stack direction="row" spacing={1}><IconButton aria-label={listening ? "Stop listening" : "Start voice input"} color={listening ? "error" : "primary"} onClick={listening ? stop : listen} sx={{ bgcolor: listening ? "error.main" : "primary.main", color: listening ? "error.contrastText" : "primary.contrastText", "&:hover": { bgcolor: listening ? "error.dark" : "primary.dark" } }}>{listening ? <StopCircleRounded /> : <MicRounded />}</IconButton><TextField fullWidth value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder={listening ? "Listening…" : "Type your request in any language"} inputProps={{ "aria-label": "Message to Panchayat Assistant" }} /><IconButton aria-label="Send message" color="primary" onClick={() => send()} disabled={!input.trim() || busy}><SendRounded /></IconButton></Stack>{listening && <Typography role="status" color="error" fontWeight={700} sx={{ mt: 1 }}>Listening… speak now. You can review the words before sending.</Typography>}</Box>
       </Paper>
-
-      <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-        <TextField
-          fullWidth
-          placeholder="Ask anything…"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") send(input); }}
-        />
-        <Button endIcon={<SendIcon />} variant="contained" disabled={busy} onClick={() => send(input)}>
-          Send
-        </Button>
-      </Stack>
+      <Stack spacing={2}><Paper sx={{ p: 2.5 }}><Typography variant="h6">Try asking</Typography><Stack spacing={1} sx={{ mt: 1.5 }}>{prompts.map((p) => <Button key={p} variant="outlined" color="inherit" startIcon={<KeyboardRounded />} onClick={() => send(p)} sx={{ justifyContent: "flex-start", textAlign: "left", height: "auto", py: 1.25 }}>{p}</Button>)}</Stack></Paper><Paper sx={{ p: 2.5, bgcolor: "primary.main", color: "primary.contrastText", border: 0 }}><PersonOutlineRounded /><Typography variant="h6" sx={{ mt: 1 }}>Need a person?</Typography><Typography variant="body2" sx={{ mt: .5, opacity: .9 }}>The assistant will never trap you. Use the manual pages or contact Panchayat staff whenever you prefer.</Typography><Button variant="contained" color="secondary" sx={{ mt: 2 }} onClick={() => setInput("Please connect me with Panchayat staff")}>Ask for human help</Button></Paper></Stack>
     </Box>
-  );
+  </Stack>;
 }

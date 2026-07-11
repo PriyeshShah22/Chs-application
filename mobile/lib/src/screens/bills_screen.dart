@@ -36,16 +36,22 @@ class BillsScreen extends ConsumerWidget {
                         trailing: b.outstanding > 0
                             ? FilledButton(
                                 onPressed: () async {
-                                  final ok = await ref.read(billListProvider.notifier)
+                                  final ok = await ref
+                                      .read(billListProvider.notifier)
                                       .pay(b.id, b.outstanding, 'upi');
                                   if (!context.mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(ok ? 'Payment recorded' : 'Failed')),
+                                    SnackBar(
+                                        content: Text(ok
+                                            ? 'Payment recorded'
+                                            : 'Failed')),
                                   );
                                 },
                                 child: const Text('Pay'),
                               )
-                            : const Chip(label: Text('PAID'), backgroundColor: Colors.green),
+                            : const Chip(
+                                label: Text('PAID'),
+                                backgroundColor: Colors.green),
                       ),
                     );
                   },

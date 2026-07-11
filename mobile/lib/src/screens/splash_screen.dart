@@ -31,16 +31,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: scheme.primary,
-      body: Center(
+      body: const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.apartment, size: 96, color: Colors.white),
-            const SizedBox(height: 16),
-            const Text('Smart Society',
-                style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 24),
-            const CircularProgressIndicator(color: Colors.white),
+            Icon(Icons.record_voice_over_rounded,
+                size: 96, color: Colors.white),
+            SizedBox(height: 16),
+            Text('Panchayat AI',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700)),
+            SizedBox(height: 24),
+            CircularProgressIndicator(color: Colors.white),
           ],
         ),
       ),

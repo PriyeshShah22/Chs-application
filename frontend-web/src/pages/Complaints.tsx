@@ -1,229 +1,26 @@
-import {
-  Box,
-  Button,
-  Chip,
-  IconButton,
-  Stack,
-  TextField,
-  Typography,
-  Paper,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  MenuItem,
-} from "@mui/material";
-import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, LinearProgress, MenuItem, Paper, Stack, TextField, Typography } from "@mui/material";
+import { AddRounded, ArrowForwardRounded, AutoAwesomeRounded, CheckCircleRounded, ConstructionRounded, ReportProblemRounded, ScheduleRounded } from "@mui/icons-material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { enqueueSnackbar } from "notistack";
 import { api } from "../api/client";
-import { DataTable, type Column } from "../components/Table";
-import { LoadingPanel } from "../components/StateViews";
 import type { Complaint } from "../types/api";
-import { useAuthStore } from "../store/auth";
 
-const STATUS = ["open", "in_progress", "resolved", "closed", "escalated"];
-const PRIORITY = ["low", "medium", "high", "urgent"];
-
+const priorities = ["low", "medium", "high", "urgent"];
 export default function Complaints() {
-  const qc = useQueryClient();
-  const me = useAuthStore((s) => s.user);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({
-    title: "",
-    description: "",
-    society_id: 1,
-    flat_id: 1,
-    priority: "medium",
-  });
-  const [editing, setEditing] = useState<Complaint | null>(null);
-
-  const list = useQuery({
-    queryKey: ["complaints"],
-    queryFn: async () => (await api.get<Complaint[]>("/complaints/?limit=200")).data,
-  });
-
-  const create = useMutation({
-    mutationFn: async (payload: any) => (await api.post("/complaints/", payload)).data,
-    onSuccess: () => {
-      enqueueSnackbar("Complaint created", { variant: "success" });
-      qc.invalidateQueries({ queryKey: ["complaints"] });
-      setDialogOpen(false);
-      setForm({ title: "", description: "", society_id: 1, flat_id: 1, priority: "medium" });
-    },
-    onError: (err: any) => enqueueSnackbar(err?.response?.data?.detail || "Failed", { variant: "error" }),
-  });
-
-  const update = useMutation({
-    mutationFn: async ({ id, payload }: { id: number; payload: any }) =>
-      (await api.patch(`/complaints/${id}`, payload)).data,
-    onSuccess: () => {
-      enqueueSnackbar("Updated", { variant: "success" });
-      qc.invalidateQueries({ queryKey: ["complaints"] });
-      setEditing(null);
-    },
-  });
-
-  const isPrivileged = (me?.roles || []).some((r) => ["admin", "committee"].includes(r.name)) || me?.is_superuser;
-
-  if (list.isLoading) return <LoadingPanel />;
-
-  const columns: Column<Complaint>[] = [
-    { key: "id", header: "ID", width: "70px" },
-    { key: "title", header: "Title" },
-    {
-      key: "priority",
-      header: "Priority",
-      render: (c) => <Chip size="small" label={c.priority.toUpperCase()} color={priorityColor(c.priority)} />,
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (c) => <Chip size="small" label={c.status.replace("_", " ").toUpperCase()} variant="outlined" />,
-    },
-    {
-      key: "ai_suggested_category",
-      header: "AI category",
-      render: (c) => (c.ai_suggested_category ? <Chip size="small" label={c.ai_suggested_category} /> : "—"),
-    },
-    { key: "created_at", header: "Created", render: (c) => new Date(c.created_at).toLocaleString() },
-    {
-      key: "actions",
-      header: "Actions",
-      render: (c) =>
-        isPrivileged ? (
-          <Stack direction="row" spacing={1}>
-            <IconButton size="small" onClick={() => setEditing(c)}>
-              <EditOutlinedIcon fontSize="small" />
-            </IconButton>
-          </Stack>
-        ) : null,
-    },
-  ];
-
-  return (
-    <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Box>
-          <Typography variant="h4">Complaints</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Track, classify, and resolve resident complaints.
-          </Typography>
-        </Box>
-        <Button variant="contained" onClick={() => setDialogOpen(true)}>
-          + New Complaint
-        </Button>
-      </Stack>
-
-      <DataTable
-        data={list.data || []}
-        columns={columns}
-        searchKeys={["title", "status", "priority"]}
-        empty="No complaints yet"
-      />
-
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>New Complaint</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              label="Title"
-              fullWidth
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-            />
-            <TextField
-              label="Description"
-              fullWidth
-              multiline
-              minRows={3}
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-            />
-            <TextField
-              select
-              label="Priority"
-              value={form.priority}
-              onChange={(e) => setForm({ ...form, priority: e.target.value })}
-            >
-              {PRIORITY.map((p) => (
-                <MenuItem key={p} value={p}>{p}</MenuItem>
-              ))}
-            </TextField>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            disabled={!form.title || !form.description || create.isPending}
-            onClick={() => create.mutate(form)}
-          >
-            Submit
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={Boolean(editing)} onClose={() => setEditing(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Update complaint #{editing?.id}</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              select
-              label="Status"
-              value={editing?.status ?? "open"}
-              onChange={(e) => setEditing((p) => (p ? { ...p, status: e.target.value } : p))}
-            >
-              {STATUS.map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-            </TextField>
-            <TextField
-              select
-              label="Priority"
-              value={editing?.priority ?? "medium"}
-              onChange={(e) => setEditing((p) => (p ? { ...p, priority: e.target.value } : p))}
-            >
-              {PRIORITY.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}
-            </TextField>
-            <TextField
-              label="Assignee (user id)"
-              type="number"
-              value={editing?.assignee_id ?? ""}
-              onChange={(e) => setEditing((p) => (p ? { ...p, assignee_id: Number(e.target.value) } : p))}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditing(null)}>Cancel</Button>
-          <Button
-            variant="contained"
-            disabled={update.isPending}
-            onClick={() =>
-              editing &&
-              update.mutate({
-                id: editing.id,
-                payload: {
-                  status: editing.status,
-                  priority: editing.priority,
-                  assignee_id: editing.assignee_id || null,
-                },
-              })
-            }
-          >
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
-  );
+  const [open, setOpen] = useState(false); const [tab, setTab] = useState<"active" | "history">("active"); const go = useNavigate(); const qc = useQueryClient();
+  const [form, setForm] = useState({ title: "", description: "", society_id: 1, flat_id: 1, priority: "medium" });
+  const list = useQuery({ queryKey: ["complaints"], queryFn: async () => (await api.get<Complaint[]>("/complaints/?limit=200")).data });
+  const create = useMutation({ mutationFn: async () => (await api.post("/complaints/", form)).data, onSuccess: () => { enqueueSnackbar("Complaint submitted", { variant: "success" }); qc.invalidateQueries({ queryKey: ["complaints"] }); setOpen(false); setForm({ title: "", description: "", society_id: 1, flat_id: 1, priority: "medium" }); }, onError: (e: any) => enqueueSnackbar(e?.response?.data?.detail || "Could not submit", { variant: "error" }) });
+  const rows = (list.data ?? []).filter((c) => tab === "active" ? !["resolved", "closed"].includes(c.status) : ["resolved", "closed"].includes(c.status));
+  return <Stack spacing={3}>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 360px" }, gap: 3, alignItems: "stretch" }}><Box><Typography variant="overline" fontWeight={900} color="primary">HELP & REPAIRS</Typography><Typography variant="h2" sx={{ fontSize: { xs: "2.5rem", md: "4rem" } }}>Problems, clearly tracked.</Typography><Typography color="text.secondary" sx={{ mt: 1, maxWidth: 660 }}>Report in your own words. Follow every update from submission until you confirm the problem is fixed.</Typography><Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mt: 3 }}><Button variant="contained" startIcon={<AddRounded />} onClick={() => setOpen(true)}>Report manually</Button><Button variant="outlined" color="inherit" startIcon={<AutoAwesomeRounded />} onClick={() => go("/ai")}>Tell the assistant</Button></Stack></Box><Paper sx={{ p: 3, bgcolor: "#173F35", color: "white", border: 0 }}><Typography variant="overline" sx={{ opacity: .7 }}>HOW IT WORKS</Typography><Stack spacing={2} sx={{ mt: 2 }}><Step number="1" text="Tell us the problem" /><Step number="2" text="Panchayat assigns it" /><Step number="3" text="You confirm it is fixed" /></Stack></Paper></Box>
+    <Stack direction="row" spacing={1}><Button variant={tab === "active" ? "contained" : "text"} onClick={() => setTab("active")}>Active ({(list.data ?? []).filter((c) => !["resolved","closed"].includes(c.status)).length})</Button><Button variant={tab === "history" ? "contained" : "text"} onClick={() => setTab("history")}>Resolved</Button></Stack>
+    {list.isLoading && <LinearProgress />}
+    {!list.isLoading && rows.length === 0 ? <Paper sx={{ p: 6, textAlign: "center" }}><CheckCircleRounded color="success" sx={{ fontSize: 52 }} /><Typography variant="h5" sx={{ mt: 1 }}>Nothing here right now</Typography><Typography color="text.secondary">New complaints and their progress will appear here.</Typography></Paper> : <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", xl: "repeat(2,1fr)" }, gap: 2 }}>{rows.map((c) => <ComplaintCard key={c.id} complaint={c} />)}</Box>}
+    <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm"><DialogTitle><Typography variant="h5">Report a problem</Typography><Typography variant="body2" color="text.secondary">Short, simple details are enough.</Typography></DialogTitle><DialogContent><Stack spacing={2.5} sx={{ mt: 1 }}><TextField label="What is the problem?" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} autoFocus /><TextField label="Tell us what happened" multiline minRows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} helperText="Mention where it happened and since when, if you know." /><TextField select label="How urgent is it?" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{priorities.map((p) => <MenuItem key={p} value={p}>{p[0].toUpperCase() + p.slice(1)}</MenuItem>)}</TextField></Stack></DialogContent><DialogActions sx={{ p: 3 }}><Button color="inherit" onClick={() => setOpen(false)}>Cancel</Button><Button variant="contained" disabled={!form.title.trim() || !form.description.trim() || create.isPending} onClick={() => create.mutate()}>Submit complaint</Button></DialogActions></Dialog>
+  </Stack>;
 }
-
-function priorityColor(p: string): "default" | "info" | "warning" | "error" {
-  switch (p) {
-    case "urgent": return "error";
-    case "high": return "warning";
-    case "medium": return "info";
-    default: return "default";
-  }
-}
+function Step({ number, text }: { number: string; text: string }) { return <Stack direction="row" spacing={1.5} alignItems="center"><Box sx={{ width: 34, height: 34, borderRadius: "50%", bgcolor: "secondary.main", color: "secondary.contrastText", display: "grid", placeItems: "center", fontWeight: 900 }}>{number}</Box><Typography fontWeight={700}>{text}</Typography></Stack>; }
+function ComplaintCard({ complaint: c }: { complaint: Complaint }) { const status = c.status.replace("_", " "); const icon = c.status === "in_progress" ? <ConstructionRounded /> : c.status === "open" ? <ScheduleRounded /> : <CheckCircleRounded />; return <Paper sx={{ p: 3 }}><Stack direction="row" justifyContent="space-between" alignItems="start"><Box sx={{ width: 52, height: 52, borderRadius: 3, bgcolor: c.priority === "urgent" ? "#FBE3DE" : "#E8E2D1", color: c.priority === "urgent" ? "#A23A31" : "#173F35", display: "grid", placeItems: "center" }}><ReportProblemRounded /></Box><Stack direction="row" spacing={1}><Chip label={c.priority} color={c.priority === "urgent" ? "error" : "default"} size="small" /><Chip icon={icon} label={status} size="small" variant="outlined" /></Stack></Stack><Typography variant="h5" sx={{ mt: 2 }}>{c.title}</Typography><Typography color="text.secondary" sx={{ mt: .5 }}>{c.description}</Typography><Box sx={{ mt: 3, pt: 2, borderTop: "1px solid", borderColor: "divider", display: "flex", justifyContent: "space-between", alignItems: "center" }}><Typography variant="body2" fontWeight={800}>Complaint #{c.id}</Typography><Button size="small" endIcon={<ArrowForwardRounded />}>View progress</Button></Box></Paper>; }

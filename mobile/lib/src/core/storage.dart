@@ -13,10 +13,12 @@ class Storage {
   String? get refreshToken => _prefs.getString(_kRefresh);
   String get baseUrl => _prefs.getString(_kBaseUrl) ?? _defaultBase;
 
-  set accessToken(String? value) =>
-      value == null ? _prefs.remove(_kAccess) : _prefs.setString(_kAccess, value);
-  set refreshToken(String? value) =>
-      value == null ? _prefs.remove(_kRefresh) : _prefs.setString(_kRefresh, value);
+  set accessToken(String? value) => value == null
+      ? _prefs.remove(_kAccess)
+      : _prefs.setString(_kAccess, value);
+  set refreshToken(String? value) => value == null
+      ? _prefs.remove(_kRefresh)
+      : _prefs.setString(_kRefresh, value);
   set baseUrl(String value) => _prefs.setString(_kBaseUrl, value);
 
   bool get hasToken => accessToken != null && accessToken!.isNotEmpty;

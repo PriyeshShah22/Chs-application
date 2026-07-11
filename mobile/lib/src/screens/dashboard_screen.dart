@@ -1,99 +1,159 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
-
 import '../services/auth_service.dart';
 import '../services/services.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authControllerProvider);
     final bills = ref.watch(billListProvider);
     final complaints = ref.watch(complaintListProvider);
-    final visitors = ref.watch(visitorListProvider);
-
-    final pendingBills = bills.maybeWhen(
-      data: (data) => data.where((b) => b.status != 'PAID').length,
-      orElse: () => 0,
-    );
-    final openComplaints = complaints.maybeWhen(
-      data: (data) => data.where((c) => c.status != 'RESOLVED' && c.status != 'CLOSED').length,
-      orElse: () => 0,
-    );
-    final todayVisitors = visitors.maybeWhen(
-      data: (data) => data.length,
-      orElse: () => 0,
-    );
-
+    final notices = ref.watch(noticeListProvider);
+    final due = bills.maybeWhen(
+        data: (rows) =>
+            rows.where((b) => b.status.toLowerCase() != 'paid').length,
+        orElse: () => 0);
+    final open = complaints.maybeWhen(
+        data: (rows) => rows
+            .where(
+                (c) => !['resolved', 'closed'].contains(c.status.toLowerCase()))
+            .length,
+        orElse: () => 0);
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Hello, ${auth.user?.fullName.split(' ').first ?? 'User'}'),
-        actions: [
-          IconButton(onPressed: () => context.go('/profile'), icon: const Icon(Icons.person)),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.read(billListProvider.notifier).refresh();
-          ref.read(complaintListProvider.notifier).refresh();
-          ref.read(visitorListProvider.notifier).refresh();
-        },
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _bigCard(context, 'Outstanding bills', '$pendingBills', Icons.receipt_long, () => context.go('/bills')),
-            const SizedBox(height: 12),
-            _bigCard(context, 'Open complaints', '$openComplaints', Icons.report_problem, () => context.go('/complaints')),
-            const SizedBox(height: 12),
-            _bigCard(context, 'Recent visitors', '$todayVisitors', Icons.login, () => context.go('/visitors')),
-            const SizedBox(height: 24),
-            Text('Recent notices', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            ...ref.watch(noticeListProvider).maybeWhen(
-                  data: (list) => list.take(3).map((n) => Card(
-                        child: ListTile(
-                          leading: Icon(n.isPinned ? Icons.push_pin : Icons.campaign),
-                          title: Text(n.title),
-                          subtitle: Text(DateFormat.yMMMd().add_Hm().format(DateTime.parse(n.publishedAt))),
-                        ),
-                      )),
-                  orElse: () => [const Padding(padding: EdgeInsets.all(16), child: Text('Loading…'))],
-                ),
-          ],
-        ),
-      ),
-    );
+        appBar: AppBar(
+            title:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                  'Namaste, ${auth.user?.fullName.split(' ').first ?? 'friend'}',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              const Text('How can we help today?',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal))
+            ]),
+            actions: [
+              IconButton(
+                  tooltip: 'Profile',
+                  onPressed: () => context.go('/profile'),
+                  icon: const Icon(Icons.account_circle_outlined))
+            ]),
+        body: RefreshIndicator(
+            onRefresh: () async {
+              ref.read(billListProvider.notifier).refresh();
+              ref.read(complaintListProvider.notifier).refresh();
+              ref.read(noticeListProvider.notifier).refresh();
+            },
+            child: ListView(padding: const EdgeInsets.all(16), children: [
+              Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                      color: const Color(0xFF176B52),
+                      borderRadius: BorderRadius.circular(24)),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Tell us what you need',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 8),
+                        const Text(
+                            'Speak naturally. We will show the task before anything is submitted.',
+                            style: TextStyle(color: Colors.white, height: 1.5)),
+                        const SizedBox(height: 20),
+                        FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFE39A31),
+                                foregroundColor: const Color(0xFF2B2114)),
+                            onPressed: () => context.go('/ai'),
+                            icon: const Icon(Icons.mic_rounded),
+                            label: const Text('Speak to Panchayat')),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                            onPressed: () => context.go('/ai'),
+                            icon: const Icon(Icons.keyboard_alt_outlined),
+                            label: const Text('Type instead'),
+                            style: TextButton.styleFrom(
+                                foregroundColor: Colors.white))
+                      ])),
+              const SizedBox(height: 24),
+              Text('Your information',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                    child: _tile(context, 'Open complaints', '$open',
+                        Icons.report_problem_outlined, '/complaints')),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: _tile(context, 'Bills due', '$due',
+                        Icons.receipt_long_outlined, '/bills'))
+              ]),
+              const SizedBox(height: 24),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Text('Important notices',
+                    style: Theme.of(context).textTheme.titleLarge),
+                TextButton(
+                    onPressed: () => context.go('/notices'),
+                    child: const Text('View all'))
+              ]),
+              ...notices.when(
+                  data: (rows) => rows
+                      .take(3)
+                      .map((n) => Card(
+                          child: ListTile(
+                              minVerticalPadding: 16,
+                              leading: CircleAvatar(
+                                  child: Icon(n.isPinned
+                                      ? Icons.push_pin_outlined
+                                      : Icons.campaign_outlined)),
+                              title: Text(n.title,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700)),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => context.go('/notices'))))
+                      .toList(),
+                  loading: () => [const LinearProgressIndicator()],
+                  error: (_, __) => [
+                        const Card(
+                            child: Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Text(
+                                    'Notices could not be loaded. Pull down to retry.')))
+                      ]),
+              const SizedBox(height: 16),
+              const Card(
+                  child: ListTile(
+                      minVerticalPadding: 16,
+                      leading: CircleAvatar(
+                          backgroundColor: Color(0xFFFFE8E8),
+                          child: Icon(Icons.emergency_outlined,
+                              color: Color(0xFFB73A3A))),
+                      title: Text('Emergency help',
+                          style: TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text('View verified local contacts'),
+                      trailing: Icon(Icons.chevron_right)))
+            ])));
   }
 
-  Widget _bigCard(BuildContext ctx, String title, String value, IconData icon, VoidCallback onTap) {
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              CircleAvatar(backgroundColor: Theme.of(ctx).colorScheme.primaryContainer, child: Icon(icon, color: Theme.of(ctx).colorScheme.primary)),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: Theme.of(ctx).textTheme.bodyMedium),
-                    Text(value, style: Theme.of(ctx).textTheme.headlineSmall),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _tile(BuildContext context, String label, String value, IconData icon,
+          String route) =>
+      Card(
+          child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () => context.go(route),
+              child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(icon,
+                            color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(height: 16),
+                        Text(value,
+                            style: Theme.of(context).textTheme.headlineMedium),
+                        Text(label)
+                      ]))));
 }

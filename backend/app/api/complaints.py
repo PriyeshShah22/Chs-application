@@ -27,7 +27,7 @@ from app.schemas.complaint import (
     ComplaintOut,
     ComplaintUpdate,
 )
-from app.services.ai_service import classify_complaint
+from app.services.complaint_service import classify_complaint, create_complaint as create_complaint_service
 
 router = APIRouter(prefix="/complaints", tags=["complaints"])
 
@@ -70,38 +70,10 @@ def classify(payload: dict, current=Depends(get_current_user)) -> dict:
 @router.post("/", response_model=ComplaintOut, status_code=status.HTTP_201_CREATED)
 def create_complaint(payload: ComplaintCreate, db: Session = Depends(get_db),
                      current=Depends(get_current_user)) -> ComplaintOut:
-    priority = _ensure_known(payload.priority, ComplaintPriority)
-
-    suggested = None
-    if payload.category_id is None:
-        suggested = classify_complaint(payload.title + " " + payload.description)
-        match = db.execute(select(ComplaintCategory)
-                          .where(ComplaintCategory.name == suggested)).scalar_one_or_none()
-        if match:
-            category_id = match.id
-        else:
-            category_id = None
-    else:
-        category_id = payload.category_id
-
-    comp = Complaint(
-        title=payload.title,
-        description=payload.description,
-        society_id=payload.society_id,
-        flat_id=payload.flat_id,
-        reporter_id=current.id,
-        category_id=category_id,
-        priority=priority,
-        status=ComplaintStatus.open,
-        photo_url=payload.photo_url,
-        ai_suggested_category=suggested,
-    )
-    db.add(comp)
-    db.commit()
-    db.refresh(comp)
-    db.add(AuditLog(actor_id=current.id, action="complaint_create",
-                    entity_type="complaint", entity_id=comp.id))
-    db.commit()
+    try:
+        comp = create_complaint_service(db, current, payload, source="manual")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ComplaintOut.model_validate(comp)
 
 

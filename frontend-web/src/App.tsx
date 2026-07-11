@@ -1,16 +1,19 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import Dashboard from "./pages/Dashboard";
-import Complaints from "./pages/Complaints";
-import Bills from "./pages/Bills";
-import Visitors from "./pages/Visitors";
-import Notices from "./pages/Notices";
-import Residents from "./pages/Residents";
-import AI from "./pages/AI";
-import Admin from "./pages/Admin";
+import { lazy, Suspense } from "react";
+import { LoadingPanel } from "./components/StateViews";
 import AppLayout from "./components/AppLayout";
 import { useAuthStore } from "./store/auth";
+
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Complaints = lazy(() => import("./pages/Complaints"));
+const Bills = lazy(() => import("./pages/Bills"));
+const Visitors = lazy(() => import("./pages/Visitors"));
+const Notices = lazy(() => import("./pages/Notices"));
+const Residents = lazy(() => import("./pages/Residents"));
+const AI = lazy(() => import("./pages/AI"));
+const Admin = lazy(() => import("./pages/Admin"));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.accessToken);
@@ -21,7 +24,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
+    <Suspense fallback={<LoadingPanel />}><Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route
@@ -42,6 +45,6 @@ export default function App() {
         <Route path="admin" element={<Admin />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
-    </Routes>
+    </Routes></Suspense>
   );
 }

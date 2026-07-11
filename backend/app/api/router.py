@@ -28,6 +28,8 @@ from app.schemas.auth import (
     RegisterRequest,
     TokenResponse,
 )
+from app.schemas.join_request import JoinRequestCreate, JoinRequestOut
+from app.models.join_request import JoinRequest, JoinRequestStatus
 from app.schemas.user import RoleOut, UserOut
 
 
@@ -61,29 +63,40 @@ def _attach_default_roles(db: Session, user: User, role_names: List[str]) -> Non
     user.roles = list(roles)
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    existing = db.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-
-    user = User(
+@router.post("/join-requests", response_model=JoinRequestOut, status_code=status.HTTP_201_CREATED)
+def request_to_join(payload: JoinRequestCreate, db: Session = Depends(get_db)) -> JoinRequestOut:
+    """Accept an application without creating an account or issuing credentials."""
+    existing_user = db.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="An account already exists for this email")
+    existing_request = db.execute(select(JoinRequest).where(JoinRequest.email == payload.email)).scalar_one_or_none()
+    if existing_request and existing_request.status == JoinRequestStatus.pending:
+        raise HTTPException(status_code=400, detail="A membership request is already waiting for review")
+    if existing_request:
+        db.delete(existing_request)
+        db.flush()
+    request = JoinRequest(
+        full_name=payload.full_name,
         email=payload.email,
         phone=payload.phone,
-        full_name=payload.full_name,
+        date_of_birth=payload.date_of_birth,
         hashed_password=hash_password(payload.password),
-        status=UserStatus.active,
         society_id=payload.society_id,
+        status=JoinRequestStatus.pending,
     )
-    _attach_default_roles(db, user, payload.role_names)
-    db.add(user)
+    db.add(request)
     db.commit()
-    db.refresh(user, attribute_names=["roles"])
+    db.refresh(request)
+    return JoinRequestOut.model_validate(request)
 
-    db.add(AuditLog(actor_id=user.id, action="register", entity_type="user", entity_id=user.id))
-    db.commit()
 
-    return _build_token_response(user)
+@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
+    # Keep the legacy route from silently bypassing the membership review policy.
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Accounts are created only after an administrator approves a membership request. Use /auth/join-requests.",
+    )
 
 
 @router.post("/login", response_model=TokenResponse)

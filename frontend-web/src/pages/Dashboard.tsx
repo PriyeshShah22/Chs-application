@@ -1,192 +1,44 @@
-import { Box, Grid, Paper, Stack, Typography, Chip } from "@mui/material";
+import { Alert, Box, Button, Chip, CircularProgress, Paper, Skeleton, Stack, Typography } from "@mui/material";
+import { ArrowOutwardRounded, CampaignRounded, CurrencyRupeeRounded, EmergencyRounded, GroupsRounded, KeyboardRounded, MicRounded, PaymentsRounded, ReportProblemRounded, ShieldRounded, VolumeUpRounded } from "@mui/icons-material";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-  Line,
-  LineChart,
-} from "recharts";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import { KpiCard } from "../components/KpiCard";
-import { useAuthStore } from "../store/auth";
-import { LoadingPanel, ErrorPanel } from "../components/StateViews";
-import type { AdminStats, Bill, Complaint } from "../types/api";
-import {
-  PeopleAlt,
-  ReportProblem,
-  ReceiptLong,
-  Login,
-} from "@mui/icons-material";
-
-const TONES = ["#0F62FE", "#7C4DFF", "#00B894", "#E17055", "#FDCB6E", "#0984E3"];
+import type { Bill, Complaint, Notice, Visitor } from "../types/api";
 
 export default function Dashboard() {
-  const { user } = useAuthStore();
-  const isPrivileged = (user?.roles || []).some((r) =>
-    ["admin", "committee"].includes(r.name)
-  );
-
-  const stats = useQuery({
-    queryKey: ["admin-stats"],
-    queryFn: async () => (await api.get<AdminStats>("/admin/stats")).data,
-    enabled: Boolean(isPrivileged || user?.is_superuser),
-  });
-
-  const complaints = useQuery({
-    queryKey: ["complaints-all"],
-    queryFn: async () => (await api.get<Complaint[]>("/complaints/?limit=200")).data,
-  });
-
-  const bills = useQuery({
-    queryKey: ["bills-all"],
-    queryFn: async () => (await api.get<Bill[]>("/bills/?limit=200")).data,
-  });
-
-  if (stats.isError) return <ErrorPanel message={(stats.error as any)?.message || "Failed"} />;
-  if (stats.isLoading || complaints.isLoading || bills.isLoading) {
-    return <LoadingPanel label="Loading dashboard…" />;
-  }
-
-  const byStatus = aggregate(complaints.data || [], (c) => c.status);
-  const billsByStatus = aggregate(bills.data || [], (b) => b.status);
-  const outstanding = (bills.data || []).reduce(
-    (acc, b) => acc + Math.max(0, b.total_amount - b.paid_amount),
-    0
-  );
-  const overdueCount = (bills.data || []).filter((b) => b.status === "overdue").length;
-
-  // 7-day visitors trend (synthetic grouping by day bucket)
-  const byDay = aggregateByDay(complaints.data || [], (c) => c.created_at);
-
-  return (
-    <Box>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-        <Box>
-          <Typography variant="h4">Welcome, {user?.full_name?.split(" ")[0] || "User"}</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Smart Society dashboard overview
-          </Typography>
+  const go = useNavigate();
+  const complaints = useQuery({ queryKey: ["complaints", "home"], queryFn: async () => (await api.get<Complaint[]>("/complaints/?limit=20")).data });
+  const bills = useQuery({ queryKey: ["bills", "home"], queryFn: async () => (await api.get<Bill[]>("/bills/?limit=20")).data });
+  const notices = useQuery({ queryKey: ["notices", "home"], queryFn: async () => (await api.get<Notice[]>("/notices/")).data });
+  const visitors = useQuery({ queryKey: ["visitors", "home"], queryFn: async () => (await api.get<Visitor[]>("/visitors/?limit=20")).data });
+  const loading = [complaints, bills, notices, visitors].some((q) => q.isLoading); const failed = [complaints, bills, notices, visitors].some((q) => q.isError);
+  const open = complaints.data?.filter((c) => !["closed", "resolved"].includes(c.status)).length ?? 0;
+  const due = bills.data?.filter((b) => b.status !== "paid").reduce((s, b) => s + Math.max(0, b.total_amount - b.paid_amount), 0) ?? 0;
+  const inside = visitors.data?.filter((v) => v.status === "checked_in").length ?? 0;
+  const latest = notices.data?.[0];
+  return <Stack spacing={3}>
+    <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "end" }} spacing={2}><Box><Typography variant="overline" color="primary" fontWeight={900} letterSpacing={2}>COMMUNITY DESK</Typography><Typography variant="h2" sx={{ fontSize: { xs: "2.6rem", md: "4.5rem" }, maxWidth: 760 }}>Say it. We’ll help get it done.</Typography></Box><Stack direction="row" spacing={1}><Button variant="outlined" color="inherit" startIcon={<VolumeUpRounded />}>Read page</Button><Button color="error" startIcon={<EmergencyRounded />}>Emergency</Button></Stack></Stack>
+    {failed && <Alert severity="warning">Some live records are unavailable. You can still use every manual service.</Alert>}
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1.15fr .85fr" }, gap: 3 }}>
+      <Paper sx={{ minHeight: { xs: 440, md: 540 }, p: { xs: 3, md: 5 }, position: "relative", overflow: "hidden", bgcolor: "#173F35", color: "#FFFDF6", border: 0, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+        <Box sx={{ position: "absolute", inset: "auto -15% -38% auto", width: "70%", aspectRatio: "1", borderRadius: "50%", border: "1px solid rgba(255,255,255,.15)" }} /><Box sx={{ position: "absolute", inset: "auto -5% -30% auto", width: "55%", aspectRatio: "1", borderRadius: "50%", border: "1px solid rgba(255,255,255,.12)" }} />
+        <Box><Chip label="Private • Permission checked" sx={{ bgcolor: "rgba(255,255,255,.12)", color: "white" }} /><Typography variant="h3" sx={{ mt: 3, maxWidth: 620, fontSize: { xs: "2rem", md: "3rem" } }}>What would you like the Panchayat to do?</Typography><Typography sx={{ mt: 1.5, opacity: .75, maxWidth: 560 }}>No forms. No department names. Explain the problem in Hindi, Marathi, Gujarati, or English.</Typography></Box>
+        <Stack alignItems="center" sx={{ my: 3, position: "relative" }}><Box sx={{ position: "absolute", width: 190, height: 190, border: "1px solid rgba(244,184,96,.28)", borderRadius: "50%" }} /><Box sx={{ position: "absolute", width: 150, height: 150, border: "1px solid rgba(244,184,96,.4)", borderRadius: "50%" }} /><Button aria-label="Start talking to Panchayat" onClick={() => go("/ai")} sx={{ width: 112, height: 112, minWidth: 112, borderRadius: "50%", bgcolor: "secondary.main", color: "secondary.contrastText", zIndex: 1, flexDirection: "column", gap: .5, boxShadow: "0 15px 45px rgba(244,184,96,.25)", "&:hover": { bgcolor: "#ffc873", transform: "scale(1.04)" } }}><MicRounded fontSize="large" /><span>Speak</span></Button></Stack>
+        <Button variant="outlined" startIcon={<KeyboardRounded />} onClick={() => go("/ai")} sx={{ alignSelf: "center", color: "white", borderColor: "rgba(255,255,255,.35)", px: 3 }}>I prefer typing</Button>
+      </Paper>
+      <Stack spacing={3}>
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 2 }}>
+          <ServiceTile icon={<ReportProblemRounded />} eyebrow="HELP" value={loading ? undefined : String(open)} label="Active complaints" color="#D76049" onClick={() => go("/complaints")} />
+          <ServiceTile icon={<PaymentsRounded />} eyebrow="MONEY" value={loading ? undefined : `₹${due.toLocaleString("en-IN")}`} label="Maintenance due" color="#E8A84E" onClick={() => go("/bills")} />
+          <ServiceTile icon={<ShieldRounded />} eyebrow="GATE" value={loading ? undefined : String(inside)} label="Visitors inside" color="#4C8D78" onClick={() => go("/visitors")} />
+          <ServiceTile icon={<GroupsRounded />} eyebrow="PEOPLE" value={loading ? undefined : "Help"} label="Talk to a person" color="#6D729C" onClick={() => go("/ai")} />
         </Box>
-        <Chip
-          label={`Logged in as ${(user?.roles || []).map((r) => r.name).join(", ") || "user"}`}
-          color="primary"
-          variant="outlined"
-        />
+        <Paper sx={{ p: 3, flex: 1, bgcolor: "#F0E9D7", color: "#27342F" }}><Stack direction="row" justifyContent="space-between"><Box><Typography variant="overline" fontWeight={900}>LATEST OFFICIAL NOTICE</Typography><Typography variant="h5" sx={{ mt: .5 }}>{loading ? <Skeleton width={220} /> : latest?.title ?? "No new notice"}</Typography></Box><CampaignRounded sx={{ fontSize: 38, color: "#D76049" }} /></Stack><Typography sx={{ mt: 2, color: "#5E6763" }}>{loading ? <Skeleton /> : latest?.body?.slice(0, 180) || "Published notices will appear here."}</Typography><Stack direction="row" spacing={1} sx={{ mt: 3 }}><Button variant="contained" onClick={() => go("/notices")} sx={{ bgcolor: "#176B52", color: "#FFFDF6", "&:hover": { bgcolor: "#124C3B" } }}>Open notice</Button><Button startIcon={<VolumeUpRounded />} sx={{ color: "#27342F" }}>Read aloud</Button></Stack></Paper>
       </Stack>
-
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCard
-            title="Active users"
-            value={stats.data?.users_active ?? "—"}
-            icon={<PeopleAlt />}
-            color="#0F62FE"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCard
-            title="Open complaints"
-            value={stats.data?.complaints_open ?? "—"}
-            icon={<ReportProblem />}
-            color="#E17055"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCard
-            title="Bills overdue"
-            value={overdueCount}
-            icon={<ReceiptLong />}
-            color="#FDCB6E"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCard
-            title="Outstanding (₹)"
-            value={outstanding.toLocaleString("en-IN")}
-            icon={<Login />}
-            color="#7C4DFF"
-          />
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, borderRadius: 3 }}>
-            <Typography variant="h6" sx={{ mb: 1 }}>Complaints by status</Typography>
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie data={byStatus} dataKey="value" nameKey="name" outerRadius={100} label>
-                  {byStatus.map((_, i) => (
-                    <Cell key={i} fill={TONES[i % TONES.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, borderRadius: 3 }}>
-            <Typography variant="h6" sx={{ mb: 1 }}>Bills by status</Typography>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={billsByStatus}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="value" fill="#0F62FE" />
-              </BarChart>
-            </ResponsiveContainer>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12}>
-          <Paper sx={{ p: 2, borderRadius: 3 }}>
-            <Typography variant="h6" sx={{ mb: 1 }}>Complaints over time</Typography>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={byDay}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#7C4DFF" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </Paper>
-        </Grid>
-      </Grid>
     </Box>
-  );
+    <Box><Stack direction="row" justifyContent="space-between" alignItems="end" sx={{ mb: 2 }}><Box><Typography variant="overline" fontWeight={900}>MANUAL SERVICES</Typography><Typography variant="h4">Prefer doing it yourself?</Typography></Box><Typography color="text.secondary" sx={{ display: { xs: "none", md: "block" } }}>Every AI action has a manual fallback.</Typography></Stack><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2,1fr)", xl: "repeat(4,1fr)" }, gap: 2 }}><Manual icon={<ReportProblemRounded />} title="Report a problem" copy="Water, road, light, waste, or safety" onClick={() => go("/complaints")} /><Manual icon={<CurrencyRupeeRounded />} title="Check bills" copy="See dues, dates, and receipts" onClick={() => go("/bills")} /><Manual icon={<ShieldRounded />} title="Allow a visitor" copy="Create or cancel gate access" onClick={() => go("/visitors")} /><Manual icon={<CampaignRounded />} title="Read notices" copy="Official source and simple explanation" onClick={() => go("/notices")} /></Box></Box>
+  </Stack>;
 }
 
-function aggregate<T>(arr: T[], keyFn: (t: T) => string): { name: string; value: number }[] {
-  const map = new Map<string, number>();
-  for (const v of arr) {
-    const k = keyFn(v);
-    map.set(k, (map.get(k) || 0) + 1);
-  }
-  return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-}
-
-function aggregateByDay<T>(arr: T[], dateFn: (t: T) => string): { name: string; value: number }[] {
-  const map = new Map<string, number>();
-  for (const v of arr) {
-    const d = dateFn(v);
-    if (!d) continue;
-    const day = d.slice(0, 10);
-    map.set(day, (map.get(day) || 0) + 1);
-  }
-  return Array.from(map.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .slice(-14)
-    .map(([name, value]) => ({ name, value }));
-}
+function ServiceTile({ icon, eyebrow, value, label, color, onClick }: { icon: React.ReactNode; eyebrow: string; value?: string; label: string; color: string; onClick(): void }) { return <Paper component="button" onClick={onClick} sx={{ p: { xs: 2, md: 2.5 }, minHeight: 170, textAlign: "left", font: "inherit", cursor: "pointer", bgcolor: color, color: "white", border: 0, display: "flex", flexDirection: "column", alignItems: "stretch", "&:hover": { transform: "translateY(-4px)", filter: "brightness(1.04)" }, transition: ".18s ease" }}><Stack direction="row" justifyContent="space-between"><Typography variant="caption" fontWeight={900} letterSpacing={1.5}>{eyebrow}</Typography>{icon}</Stack><Box sx={{ mt: "auto" }}>{value === undefined ? <CircularProgress size={25} color="inherit" /> : <Typography variant="h4">{value}</Typography>}<Typography sx={{ opacity: .9 }}>{label}</Typography></Box></Paper>; }
+function Manual({ icon, title, copy, onClick }: { icon: React.ReactNode; title: string; copy: string; onClick(): void }) { return <Paper component="button" onClick={onClick} sx={{ p: 2.5, textAlign: "left", font: "inherit", cursor: "pointer", bgcolor: "background.paper", display: "grid", gridTemplateColumns: "52px 1fr auto", gap: 1.5, alignItems: "center", "&:hover": { borderColor: "primary.main" } }}><Box sx={{ width: 52, height: 52, borderRadius: 1.5, bgcolor: "#E8E2D1", color: "#173F35", display: "grid", placeItems: "center" }}>{icon}</Box><Box><Typography fontWeight={850}>{title}</Typography><Typography variant="body2" color="text.secondary">{copy}</Typography></Box><ArrowOutwardRounded /></Paper>; }

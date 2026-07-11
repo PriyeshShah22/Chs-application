@@ -1,7 +1,8 @@
 """Admin router: user management, audit logs, system stats."""
+from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
@@ -12,9 +13,68 @@ from app.models.bill import Bill, BillStatus
 from app.models.complaint import Complaint, ComplaintStatus
 from app.models.user import User, UserStatus
 from app.models.user import Role
+from app.models.join_request import JoinRequest, JoinRequestStatus
+from app.core.security import hash_password
+from app.schemas.join_request import JoinRequestOut
 from app.schemas.user import RoleOut, UserOut
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/join-requests", response_model=List[JoinRequestOut])
+def list_join_requests(db: Session = Depends(get_db), current=Depends(get_current_user)):
+    require_any_role(current, ["admin"])
+    rows = db.execute(select(JoinRequest).where(JoinRequest.status == JoinRequestStatus.pending)
+                      .order_by(desc(JoinRequest.created_at))).scalars().all()
+    return [JoinRequestOut.model_validate(row) for row in rows]
+
+
+@router.post("/join-requests/{request_id}/approve", response_model=UserOut)
+def approve_join_request(request_id: int, db: Session = Depends(get_db), current=Depends(get_current_user)) -> UserOut:
+    require_any_role(current, ["admin"])
+    request = db.get(JoinRequest, request_id)
+    if not request or request.status != JoinRequestStatus.pending:
+        raise HTTPException(status_code=404, detail="Pending membership request not found")
+    if db.execute(select(User).where(User.email == request.email)).scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="An account already exists for this email")
+    resident_role = db.execute(select(Role).where(Role.name == "resident")).scalar_one_or_none()
+    if not resident_role:
+        resident_role = Role(name="resident", description="Resident / owner")
+        db.add(resident_role)
+        db.flush()
+    user = User(
+        email=request.email,
+        phone=request.phone,
+        full_name=request.full_name,
+        hashed_password=request.hashed_password,
+        society_id=request.society_id or current.society_id,
+        status=UserStatus.active,
+    )
+    user.roles.append(resident_role)
+    db.add(user)
+    db.flush()
+    request.status = JoinRequestStatus.approved
+    request.reviewer_id = current.id
+    request.reviewed_at = datetime.utcnow()
+    db.add(AuditLog(actor_id=current.id, action="join_request_approved", entity_type="user", entity_id=user.id, details=f"request_id={request.id}"))
+    db.commit()
+    db.refresh(user)
+    return UserOut.model_validate(user)
+
+
+@router.post("/join-requests/{request_id}/reject", response_model=JoinRequestOut)
+def reject_join_request(request_id: int, db: Session = Depends(get_db), current=Depends(get_current_user)) -> JoinRequestOut:
+    require_any_role(current, ["admin"])
+    request = db.get(JoinRequest, request_id)
+    if not request or request.status != JoinRequestStatus.pending:
+        raise HTTPException(status_code=404, detail="Pending membership request not found")
+    request.status = JoinRequestStatus.rejected
+    request.reviewer_id = current.id
+    request.reviewed_at = datetime.utcnow()
+    db.add(AuditLog(actor_id=current.id, action="join_request_rejected", entity_type="join_request", entity_id=request.id))
+    db.commit()
+    db.refresh(request)
+    return JoinRequestOut.model_validate(request)
 
 
 @router.get("/users", response_model=List[UserOut])

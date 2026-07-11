@@ -32,14 +32,23 @@ class NoticesScreen extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(children: [
-                              if (n.isPinned) const Icon(Icons.push_pin, size: 18, color: Colors.amber),
+                              if (n.isPinned)
+                                const Icon(Icons.push_pin,
+                                    size: 18, color: Colors.amber),
                               const SizedBox(width: 6),
-                              Expanded(child: Text(n.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
+                              Expanded(
+                                  child: Text(n.title,
+                                      style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700))),
                             ]),
                             const SizedBox(height: 4),
                             Text(
-                              DateFormat.yMMMd().add_Hm().format(DateTime.parse(n.publishedAt)),
-                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              DateFormat.yMMMd()
+                                  .add_Hm()
+                                  .format(DateTime.parse(n.publishedAt)),
+                              style: const TextStyle(
+                                  color: Colors.grey, fontSize: 12),
                             ),
                             const SizedBox(height: 8),
                             Text(n.body),

@@ -32,18 +32,26 @@ class VisitorsScreen extends ConsumerWidget {
                     final v = items[i];
                     return Card(
                       child: ListTile(
-                        leading: CircleAvatar(child: Text(v.name.isNotEmpty ? v.name[0] : '?')),
+                        leading: CircleAvatar(
+                            child: Text(v.name.isNotEmpty ? v.name[0] : '?')),
                         title: Text(v.name),
-                        subtitle: Text('${v.purpose ?? ''} · ${DateFormat.yMMMd().add_Hm().format(DateTime.parse(v.createdAt))}'),
+                        subtitle: Text(
+                            '${v.purpose ?? ''} · ${DateFormat.yMMMd().add_Hm().format(DateTime.parse(v.createdAt))}'),
                         trailing: PopupMenuButton<String>(
                           onSelected: (kind) async {
-                            await ref.read(visitorListProvider.notifier).action(v.id, kind);
+                            await ref
+                                .read(visitorListProvider.notifier)
+                                .action(v.id, kind);
                           },
                           itemBuilder: (_) => const [
-                            PopupMenuItem(value: 'approve', child: Text('Approve')),
-                            PopupMenuItem(value: 'reject', child: Text('Reject')),
-                            PopupMenuItem(value: 'check_in', child: Text('Check in')),
-                            PopupMenuItem(value: 'check_out', child: Text('Check out')),
+                            PopupMenuItem(
+                                value: 'approve', child: Text('Approve')),
+                            PopupMenuItem(
+                                value: 'reject', child: Text('Reject')),
+                            PopupMenuItem(
+                                value: 'check_in', child: Text('Check in')),
+                            PopupMenuItem(
+                                value: 'check_out', child: Text('Check out')),
                           ],
                           child: Chip(label: Text(v.status)),
                         ),
@@ -65,20 +73,34 @@ class VisitorsScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       builder: (ctx) => Padding(
-        padding: EdgeInsets.only(left: 16, right: 16, top: 16, bottom: MediaQuery.of(ctx).viewInsets.bottom + 16),
+        padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Register Visitor', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const Text('Register Visitor',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
-            TextField(controller: nameC, decoration: const InputDecoration(labelText: 'Name')),
+            TextField(
+                controller: nameC,
+                decoration: const InputDecoration(labelText: 'Name')),
             const SizedBox(height: 8),
-            TextField(controller: phoneC, decoration: const InputDecoration(labelText: 'Phone')),
+            TextField(
+                controller: phoneC,
+                decoration: const InputDecoration(labelText: 'Phone')),
             const SizedBox(height: 8),
-            TextField(controller: purposeC, decoration: const InputDecoration(labelText: 'Purpose')),
+            TextField(
+                controller: purposeC,
+                decoration: const InputDecoration(labelText: 'Purpose')),
             const SizedBox(height: 8),
-            TextField(controller: vehicleC, decoration: const InputDecoration(labelText: 'Vehicle (optional)')),
+            TextField(
+                controller: vehicleC,
+                decoration:
+                    const InputDecoration(labelText: 'Vehicle (optional)')),
             const SizedBox(height: 12),
             FilledButton(
               onPressed: () async {

@@ -1,112 +1,13 @@
 import { useState } from "react";
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Stack,
-  TextField,
-  Typography,
-  Alert,
-  Link,
-} from "@mui/material";
-import { Link as RouterLink, useNavigate } from "react-router-dom";
+import { Alert, Box, Button, Card, CardContent, Link, Stack, TextField, Typography } from "@mui/material";
+import { Link as RouterLink } from "react-router-dom";
 import { api } from "../api/client";
-import { useAuthStore } from "../store/auth";
-import type { LoginResponse } from "../types/api";
 
 export default function Register() {
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
-  const setTokens = useAuthStore((s) => s.setTokens);
-  const setUser = useAuthStore((s) => s.setUser);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.post<LoginResponse>("/auth/register", {
-        email,
-        phone: phone || null,
-        full_name: fullName,
-        password,
-        role_names: ["resident"],
-      });
-      setTokens(res.data.access_token, res.data.refresh_token);
-      setUser(res.data.user);
-      navigate("/", { replace: true });
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || "Registration failed.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        bgcolor: "background.default",
-        p: 2,
-      }}
-    >
-      <Card sx={{ maxWidth: 480, width: "100%" }}>
-        <CardContent>
-          <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
-            Create your account
-          </Typography>
-          <form onSubmit={onSubmit}>
-            <Stack spacing={2}>
-              <TextField
-                label="Full name"
-                fullWidth
-                required
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-              />
-              <TextField
-                label="Email"
-                type="email"
-                fullWidth
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <TextField
-                label="Phone (optional)"
-                fullWidth
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-              <TextField
-                label="Password"
-                type="password"
-                fullWidth
-                required
-                helperText="At least 8 characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              {error && <Alert severity="error">{error}</Alert>}
-              <Button type="submit" variant="contained" size="large" disabled={loading}>
-                {loading ? "Creating…" : "Create Account"}
-              </Button>
-              <Link component={RouterLink} to="/login" variant="body2" textAlign="center">
-                Already have an account? Sign in
-              </Link>
-            </Stack>
-          </form>
-        </CardContent>
-      </Card>
-    </Box>
-  );
+  const [form, setForm] = useState({ full_name: "", email: "", phone: "", date_of_birth: "", password: "" });
+  const [error, setError] = useState<string | null>(null); const [submitted, setSubmitted] = useState(false); const [loading, setLoading] = useState(false);
+  const update = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [key]: e.target.value });
+  async function submit(e: React.FormEvent) { e.preventDefault(); setLoading(true); setError(null); try { await api.post("/auth/join-requests", { ...form, phone: form.phone || null }); setSubmitted(true); } catch (err: any) { setError(err?.response?.data?.detail || "Your request could not be sent. Please try again."); } finally { setLoading(false); } }
+  const readable = { color: "#1E2A26", "& .MuiTypography-colorTextSecondary": { color: "#56645D" }, "& .MuiInputLabel-root": { color: "#4C5B54" }, "& .MuiFormHelperText-root": { color: "#66746D" }, "& .MuiOutlinedInput-input": { color: "#1E2A26" }, "& .MuiOutlinedInput-notchedOutline": { borderColor: "#627069" }, "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#173F35" }, "& .MuiSvgIcon-root": { color: "#33453D" } };
+  return <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", bgcolor: "#F8F5EA", p: 2, ...readable }}><Card sx={{ maxWidth: 540, width: "100%", bgcolor: "#FFFDF7", color: "#1E2A26", borderColor: "#D5CEBC" }}><CardContent sx={{ p: { xs: 3, sm: 5 } }}>{submitted ? <Stack spacing={2} alignItems="flex-start"><Typography variant="overline" sx={{ color: "#176B52" }} fontWeight={900}>REQUEST SENT</Typography><Typography variant="h3" sx={{ color: "#1E2A26" }}>We’ll check your membership.</Typography><Typography sx={{ color: "#56645D" }}>An administrator will review your details to confirm that you belong to the society. You will be able to sign in only after approval.</Typography><Button component={RouterLink} to="/login" variant="contained" sx={{ bgcolor: "#176B52", color: "#FFFDF6" }}>Back to sign in</Button></Stack> : <><Typography variant="overline" sx={{ color: "#176B52" }} fontWeight={900}>MEMBERSHIP REQUEST</Typography><Typography variant="h3" sx={{ mt: 1, color: "#1E2A26" }}>Request to join</Typography><Typography sx={{ mt: 1, color: "#56645D" }}>Only verified society residents can join. Your request is reviewed by an administrator before an account is created.</Typography><Box component="form" onSubmit={submit} sx={{ mt: 3 }}><Stack spacing={2}><TextField label="Full name" required value={form.full_name} onChange={update("full_name")} /><TextField label="Date of birth" type="date" required value={form.date_of_birth} onChange={update("date_of_birth")} InputLabelProps={{ shrink: true }} /><TextField label="Email" type="email" required value={form.email} onChange={update("email")} /><TextField label="Phone number" value={form.phone} onChange={update("phone")} /><TextField label="Create password" type="password" required helperText="This is stored securely and is never shown to administrators." value={form.password} onChange={update("password")} />{error && <Alert severity="error">{error}</Alert>}<Button type="submit" variant="contained" size="large" disabled={loading} sx={{ bgcolor: "#176B52", color: "#FFFDF6", "&:hover": { bgcolor: "#124C3B" } }}>{loading ? "Sending request…" : "Request to join"}</Button><Link component={RouterLink} to="/login" textAlign="center" sx={{ color: "#176B52" }}>Already approved? Sign in</Link></Stack></Box></>}</CardContent></Card></Box>;
 }
