@@ -27,8 +27,23 @@ def _ensure_status(name: str) -> VisitorStatus:
 @router.post("/", response_model=VisitorOut, status_code=status.HTTP_201_CREATED)
 def register_visitor(payload: VisitorCreate, db: Session = Depends(get_db),
                      current=Depends(get_current_user)) -> VisitorOut:
+    if not current.society_id:
+        raise HTTPException(status_code=400, detail="No society is linked to this account")
+    privileged = current.is_superuser or bool({"admin", "committee", "security"} & set(current.role_names))
+    flat_id = payload.flat_id
+    if not privileged:
+        if not current.resident:
+            raise HTTPException(status_code=403, detail="A linked resident profile is required")
+        flat_id = current.resident.flat_id
+    from app.models.society import Flat
+    flat = db.get(Flat, flat_id)
+    if not flat or flat.society_id != current.society_id:
+        raise HTTPException(status_code=400, detail="The selected flat is not in your society")
+    data = payload.model_dump(exclude={"society_id", "flat_id"})
     visitor = Visitor(
-        **payload.model_dump(),
+        **data,
+        society_id=current.society_id,
+        flat_id=flat_id,
         host_id=current.id,
         qr_code=secrets.token_urlsafe(12),
         status=VisitorStatus.pending,
@@ -51,14 +66,15 @@ def list_visitors(
     limit: int = Query(50, le=200),
 ) -> list[VisitorOut]:
     q = select(Visitor).order_by(desc(Visitor.created_at))
-    if current.is_superuser or "security" in current.role_names or "committee" in current.role_names or "admin" in current.role_names:
-        pass
+    if current.is_superuser:
+        if society_id is not None:
+            q = q.where(Visitor.society_id == society_id)
+    elif "security" in current.role_names or "committee" in current.role_names or "admin" in current.role_names:
+        q = q.where(Visitor.society_id == current.society_id)
     elif mine:
         q = q.where(Visitor.host_id == current.id)
     else:
         q = q.where(Visitor.host_id == current.id)
-    if society_id is not None:
-        q = q.where(Visitor.society_id == society_id)
     rows = db.execute(q.limit(limit)).scalars().all()
     return [VisitorOut.model_validate(v) for v in rows]
 
@@ -70,6 +86,8 @@ def update_visitor(visitor_id: int, payload: VisitorUpdate,
     v = db.get(Visitor, visitor_id)
     if not v:
         raise HTTPException(status_code=404, detail="Visitor not found")
+    if not current.is_superuser and v.society_id != current.society_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     if v.host_id != current.id and not (current.is_superuser
                                         or "committee" in current.role_names
                                         or "security" in current.role_names
@@ -89,6 +107,8 @@ def take_action(visitor_id: int, payload: VisitorActionRequest,
     v = db.get(Visitor, visitor_id)
     if not v:
         raise HTTPException(status_code=404, detail="Visitor not found")
+    if not current.is_superuser and v.society_id != current.society_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     action = payload.action.lower()
     mapping = {
         "approve": VisitorStatus.approved,

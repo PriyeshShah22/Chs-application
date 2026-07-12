@@ -31,9 +31,23 @@ def create_society(payload: SocietyCreate, db: Session = Depends(get_db),
     return SocietyOut.model_validate(society)
 
 
+@router.get("/flats", response_model=list[FlatOut])
+def list_society_flats(db: Session = Depends(get_db),
+                       current=Depends(get_current_user)) -> list[FlatOut]:
+    """Return only flats in the authenticated user's society for safe selectors."""
+    if not current.society_id:
+        return []
+    rows = db.execute(
+        select(Flat).where(Flat.society_id == current.society_id).order_by(Flat.block_id, Flat.floor, Flat.number)
+    ).scalars().all()
+    return [FlatOut.model_validate(flat) for flat in rows]
+
+
 @router.get("/{society_id}/blocks", response_model=list[BlockOut])
 def list_blocks(society_id: int, db: Session = Depends(get_db),
                 current=Depends(get_current_user)) -> list[BlockOut]:
+    if not current.is_superuser and society_id != current.society_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     rows = db.execute(select(Block).where(Block.society_id == society_id)).scalars().all()
     return [BlockOut.model_validate(b) for b in rows]
 
@@ -52,6 +66,11 @@ def create_block(payload: BlockCreate, db: Session = Depends(get_db),
 @router.get("/blocks/{block_id}/flats", response_model=list[FlatOut])
 def list_flats(block_id: int, db: Session = Depends(get_db),
                current=Depends(get_current_user)) -> list[FlatOut]:
+    block = db.get(Block, block_id)
+    if not block:
+        raise HTTPException(status_code=404, detail="Block not found")
+    if not current.is_superuser and block.society_id != current.society_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     rows = db.execute(select(Flat).where(Flat.block_id == block_id)).scalars().all()
     return [FlatOut.model_validate(f) for f in rows]
 

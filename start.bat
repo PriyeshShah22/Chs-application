@@ -7,6 +7,11 @@ where python >nul 2>nul || (
   pause
   exit /b 1
 )
+python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)" || (
+  echo [ERROR] Python 3.11 or newer is required. The current 'python' command is too old.
+  pause
+  exit /b 1
+)
 where npm.cmd >nul 2>nul || (
   echo [ERROR] Node.js and npm are required and were not found in PATH.
   pause
@@ -16,18 +21,18 @@ where npm.cmd >nul 2>nul || (
 if not exist "backend\.venv\Scripts\python.exe" (
   echo [SETUP] Creating the Python environment...
   python -m venv "backend\.venv" || goto :failed
-  "backend\.venv\Scripts\python.exe" -m pip install -r "backend\requirements.txt" || goto :failed
 )
+
+echo [SETUP] Checking backend dependencies...
+"backend\.venv\Scripts\python.exe" -m pip install --disable-pip-version-check -r "backend\requirements.txt" || goto :failed
 
 if not exist "backend\.env" copy /y "backend\.env.example" "backend\.env" >nul
 if not exist "frontend-web\.env" copy /y "frontend-web\.env.example" "frontend-web\.env" >nul
 
-if not exist "frontend-web\node_modules" (
-  echo [SETUP] Installing web dependencies...
-  pushd "frontend-web"
-  call npm.cmd ci || (popd & goto :failed)
-  popd
-)
+echo [SETUP] Checking web dependencies...
+pushd "frontend-web"
+call npm.cmd install --no-audit --no-fund || (popd & goto :failed)
+popd
 
 echo [SETUP] Preparing the development database...
 pushd "backend"

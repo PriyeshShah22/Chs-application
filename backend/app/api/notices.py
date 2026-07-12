@@ -1,4 +1,5 @@
 """Notice board router."""
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -17,9 +18,13 @@ router = APIRouter(prefix="/notices", tags=["notices"])
 def list_notices(society_id: Optional[int] = None,
                  db: Session = Depends(get_db),
                  current=Depends(get_current_user)) -> list[NoticeOut]:
-    q = select(Notice).order_by(desc(Notice.published_at))
-    if society_id is not None:
-        q = q.where(Notice.society_id == society_id)
+    if not current.society_id and not current.is_superuser:
+        return []
+    q = select(Notice).order_by(desc(Notice.is_pinned), desc(Notice.published_at))
+    effective_society = society_id if current.is_superuser and society_id is not None else current.society_id
+    if effective_society is not None:
+        q = q.where(Notice.society_id == effective_society)
+    q = q.where((Notice.expires_at.is_(None)) | (Notice.expires_at > datetime.utcnow()))
     rows = db.execute(q.limit(100)).scalars().all()
     return [NoticeOut.model_validate(n) for n in rows]
 
@@ -28,7 +33,11 @@ def list_notices(society_id: Optional[int] = None,
 def create_notice(payload: NoticeCreate, db: Session = Depends(get_db),
                   current=Depends(get_current_user)) -> NoticeOut:
     require_any_role(current, ["admin", "committee"])
-    notice = Notice(**payload.model_dump(), author_id=current.id)
+    if not current.society_id:
+        raise HTTPException(status_code=400, detail="No society is linked to this account")
+    data = payload.model_dump()
+    data["society_id"] = current.society_id
+    notice = Notice(**data, author_id=current.id)
     db.add(notice)
     db.commit()
     db.refresh(notice)
@@ -42,6 +51,8 @@ def delete_notice(notice_id: int, db: Session = Depends(get_db),
     if not n:
         raise HTTPException(status_code=404, detail="Notice not found")
     require_any_role(current, ["admin", "committee"])
+    if not current.is_superuser and n.society_id != current.society_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     db.delete(n)
     db.commit()
     return {"detail": "deleted"}

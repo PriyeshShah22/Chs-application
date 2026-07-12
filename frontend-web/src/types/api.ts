@@ -81,6 +81,7 @@ export interface Visitor {
   status: string;
   vehicle_number?: string | null;
   qr_code?: string | null;
+  expected_at?: string | null;
   created_at: string;
 }
 

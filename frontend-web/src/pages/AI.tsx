@@ -7,6 +7,15 @@ interface Proposal { id: number; action_type: string; risk: string; status: stri
 interface Message { role: "user" | "assistant"; content: string; action?: Proposal }
 interface MemoryMessage { role: "user" | "assistant"; content: string }
 const prompts = ["There has been no water near my house since morning", "Pay my maintenance fee for this month", "Show my recent complaints", "What are the latest notices?"];
+const plainSpeech = (text: string) => text
+  .replace(/```[\s\S]*?```/g, " ")
+  .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+  .replace(/^\s{0,3}#{1,6}\s*/gm, "")
+  .replace(/\*\*|__|`/g, "")
+  .replace(/^\s*[-*•]\s+/gm, "")
+  .replace(/[\*_]/g, " ")
+  .replace(/[ \t]+/g, " ")
+  .trim();
 
 function recordingFormat() {
   const formats = [
@@ -45,8 +54,8 @@ useEffect(() => {
 }, []);
 
   function stopSpeaking() { window.speechSynthesis?.cancel(); setSpeakingText(null); }
-  function speak(text: string) { if (!("speechSynthesis" in window)) { setVoiceError("Read aloud is unavailable in this browser."); return; } stopSpeaking(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = language; utterance.onstart = () => setSpeakingText(text); utterance.onend = () => setSpeakingText(null); utterance.onerror = () => setSpeakingText(null); window.speechSynthesis.speak(utterance); }
-  function appendResult(data: any, translated?: string) { setMemoryMessages(data.memory_messages || []); setConversationSummary(data.conversation_summary || ""); if (translated) setMessages((m) => [...m, { role: "user", content: `Translated to English: ${translated}` }, { role: "assistant", content: data.reply, action: data.action }]); else setMessages((m) => [...m, { role: "assistant", content: data.reply, action: data.action }]); speak(data.reply); }
+  function speak(text: string) { if (!("speechSynthesis" in window)) { setVoiceError("Read aloud is unavailable in this browser."); return; } stopSpeaking(); const safeText = plainSpeech(text); const utterance = new SpeechSynthesisUtterance(safeText); utterance.lang = language; utterance.onstart = () => setSpeakingText(text); utterance.onend = () => setSpeakingText(null); utterance.onerror = () => setSpeakingText(null); window.speechSynthesis.speak(utterance); }
+  function appendResult(data: any, translated?: string) { const reply = plainSpeech(data.reply || ""); setMemoryMessages(data.memory_messages || []); setConversationSummary(data.conversation_summary || ""); if (translated) setMessages((m) => [...m, { role: "user", content: `Translated to English: ${translated}` }, { role: "assistant", content: reply, action: data.action }]); else setMessages((m) => [...m, { role: "assistant", content: reply, action: data.action }]); speak(reply); }
   async function send(text = input) { if (!text.trim() || busy) return; stopSpeaking(); setMessages((m) => [...m, { role: "user", content: text.trim() }]); setInput(""); setBusy(true); try { const { data } = await api.post("/ai/chat", { message: text.trim(), language, history: memoryMessages, conversation_summary: conversationSummary || null }); appendResult(data); } catch (e: any) { setMessages((m) => [...m, { role: "assistant", content: e?.response?.data?.detail || "The AI service could not be reached. Manual services still work." }]); } finally { setBusy(false); } }
   async function sendVoice(blob: Blob, extension: string) { setBusy(true); try { const form = new FormData(); form.append("audio", blob, `panchayat-request.${extension}`); form.append("language", language); form.append("history", JSON.stringify(memoryMessages)); form.append("conversation_summary", conversationSummary); const { data } = await api.post("/ai/voice", form, { timeout: 45_000 }); appendResult(data, data.input_transcript); } catch (e: any) { setVoiceError(e?.response?.data?.detail || "The recording could not be translated. Please retry or type your request."); } finally { setBusy(false); } }
   function startWaveform(stream: MediaStream) { const context = new AudioContext(); const analyser = context.createAnalyser(); analyser.fftSize = 128; context.createMediaStreamSource(stream).connect(analyser); audioContextRef.current = context; const values = new Uint8Array(analyser.frequencyBinCount); const draw = () => { const canvas = canvasRef.current; if (canvas) { const ctx = canvas.getContext("2d"); if (ctx) { const width = canvas.clientWidth * window.devicePixelRatio; const height = canvas.clientHeight * window.devicePixelRatio; if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; } analyser.getByteFrequencyData(values); ctx.clearRect(0, 0, width, height); const barWidth = width / values.length; values.forEach((value, index) => { const barHeight = Math.max(3, (value / 255) * height); ctx.fillStyle = "#167d69"; ctx.fillRect(index * barWidth, (height - barHeight) / 2, Math.max(2, barWidth - 2), barHeight); }); } } animationRef.current = requestAnimationFrame(draw); }; draw(); }
