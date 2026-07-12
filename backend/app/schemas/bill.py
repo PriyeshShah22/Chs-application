@@ -6,13 +6,18 @@ from pydantic import BaseModel, ConfigDict
 
 
 class BillCreate(BaseModel):
-    billed_user_id: int
     billing_year: int
     billing_month: int
     maintenance_amount: float
-    water_amount: float
-    electricity_amount: float
     due_date: date
+
+
+class MonthlyBillingResult(BaseModel):
+    created: int
+    skipped: int
+    total_amount: float
+    billing_year: int
+    billing_month: int
 
 
 class BillLineItemOut(BaseModel):
@@ -88,3 +93,11 @@ class PaymentVerify(BaseModel):
     razorpay_order_id: str
     razorpay_payment_id: str
     razorpay_signature: str
+
+
+class DuesSummaryOut(BaseModel):
+    bill_count: int
+    total_outstanding: float
+    oldest_due_date: Optional[date] = None
+    bill_ids: List[int] = []
+    demo_enabled: bool

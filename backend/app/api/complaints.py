@@ -11,6 +11,7 @@ from app.db.base import get_db
 from app.models.audit import AuditLog
 from app.models.complaint import Complaint, ComplaintCategory, ComplaintComment, ComplaintEvent, ComplaintPriority, ComplaintStatus
 from app.models.user import User
+from app.models.society import Flat
 from app.schemas.complaint import (CategoryCreate, CategoryOut, ComplaintCommentCreate,
     ComplaintCommentOut, ComplaintCreate, ComplaintOut, ComplaintTransition, ComplaintUpdate)
 from app.services.complaint_service import classify_complaint, create_complaint as create_complaint_service
@@ -32,6 +33,7 @@ def _load(db: Session, complaint_id: int) -> Complaint:
     complaint = db.execute(select(Complaint).options(
         selectinload(Complaint.reporter), selectinload(Complaint.assignee),
         selectinload(Complaint.category), selectinload(Complaint.events),
+        selectinload(Complaint.flat).selectinload(Flat.block),
     ).where(Complaint.id == complaint_id)).scalar_one_or_none()
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
@@ -79,7 +81,8 @@ def list_complaints(db: Session = Depends(get_db), current: User = Depends(get_c
     if not current.society_id:
         return []
     query = select(Complaint).options(selectinload(Complaint.reporter), selectinload(Complaint.assignee),
-        selectinload(Complaint.category), selectinload(Complaint.events)).where(Complaint.society_id == current.society_id)
+        selectinload(Complaint.category), selectinload(Complaint.events),
+        selectinload(Complaint.flat).selectinload(Flat.block)).where(Complaint.society_id == current.society_id)
     if not _manager(current):
         query = query.where(Complaint.reporter_id == current.id)
     if status_filter:

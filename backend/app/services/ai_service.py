@@ -25,7 +25,7 @@ from app.services.complaint_service import classify_complaint, create_complaint
 READ_TOOLS = {"get_current_dues", "get_my_complaints", "get_recent_notices"}
 ACTION_RISKS = {
     "create_complaint": AIActionRisk.medium,
-    "pay_monthly_fee": AIActionRisk.high,
+    "pay_outstanding_dues": AIActionRisk.high,
     "publish_announcement": AIActionRisk.high,
 }
 
@@ -62,16 +62,9 @@ def _tools_for(user: User) -> List[dict]:
             },
             ["title", "description", "priority"],
         ),
-        _tool(
-            "pay_monthly_fee",
-            "Prepare payment of the authenticated resident's maintenance bill for a specific month and year. The server resolves the bill and amount.",
-            {
-                "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                "year": {"type": "integer", "minimum": 2020, "maximum": 2100},
-                "payment_method": {"type": "string", "enum": ["upi"]},
-            },
-            ["month", "year", "payment_method"],
-        ),
+        _tool("pay_outstanding_dues",
+              "Prepare one checkout for all outstanding maintenance months belonging to the authenticated resident. The server resolves every bill and exact combined amount.",
+              {}, []),
     ]
     if "resident" not in user.role_names or not user.resident:
         tools = [tool for tool in tools if tool["name"] != "create_complaint"]
@@ -106,7 +99,7 @@ Prepare at most one write action per request. You may perform read tools first w
 If required information is missing, ask one short clarifying question and do not call a tool.
 For complaints, infer priority without asking unless the user explicitly gives a priority. Use impact, safety risk, number of people affected, duration, and emotional urgency as signals. Strong emotion alone must not make a harmless issue urgent. Use urgent only for an immediate serious risk such as fire, electrical danger, lift entrapment, flooding, security danger, or loss of an essential service.
 Complaint tool title and description must always be clear, formal English, even when the conversation is Hindi, Marathi, or Hinglish. Preserve the facts and meaning; do not store transliterated Hindi or Marathi. The conversational preview may be in the user's language.
-For a payment request without a stated method, use UPI. If a year is omitted, use {datetime.utcnow().year}.
+For any request to pay maintenance or bills, prepare pay_outstanding_dues. Include every unpaid older month in one combined checkout and explain the combined total clearly.
 Only an admin tool can publish an announcement; tell non-admin users they lack permission.
 Reply briefly in the language represented by {language}. Use simple words suitable for a low-literacy user.
 Return plain text only. Never use Markdown, asterisks, hash headings, tables, backticks, underscores for emphasis, or decorative symbols. Use short sentences and numbered items written as 1., 2., 3. when a list is needed because the response will be read aloud.
@@ -185,16 +178,21 @@ def _create_action(db: Session, user: User, action_type: str, args: dict) -> tup
         }
         category = classify_complaint(f"{args['title']} {args['description']}")
         summary = f"Submit a {category.lower()} complaint: {args['title']}"
-    elif action_type == "pay_monthly_fee":
-        bill = _resolve_bill(db, user, args["month"], args["year"])
-        if not bill:
-            return {"error": "No unpaid bill was found for that month and year."}, None
+    elif action_type == "pay_outstanding_dues":
+        bills = db.execute(select(Bill).where(
+            Bill.billed_user_id == user.id,
+            Bill.status.in_([BillStatus.pending, BillStatus.overdue, BillStatus.partial]),
+        ).order_by(Bill.billing_year, Bill.billing_month)).scalars().all()
+        if not bills:
+            return {"error": "No unpaid maintenance dues were found."}, None
+        total = round(sum(bill.outstanding for bill in bills), 2)
         payload = {
-            "bill_id": bill.id, "bill_number": bill.bill_number,
-            "month": args["month"], "year": args["year"],
-            "amount": bill.outstanding, "payment_method": args["payment_method"],
+            "bill_ids": [bill.id for bill in bills],
+            "months": [f"{bill.billing_year}-{bill.billing_month:02d}" for bill in bills],
+            "bill_count": len(bills), "amount": total, "payment_method": "upi",
+            "demo": not bool(settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET),
         }
-        summary = f"Pay ₹{bill.outstanding:,.2f} for {bill.title} using {args['payment_method'].upper()}"
+        summary = f"Pay ₹{total:,.2f} for {len(bills)} outstanding maintenance month{'s' if len(bills) != 1 else ''}"
     elif action_type == "publish_announcement":
         if not (user.is_superuser or "admin" in user.role_names):
             return {"error": "Only an administrator can publish announcements."}, None
@@ -364,12 +362,12 @@ def confirm_action(db: Session, user: User, action_id: int) -> Dict[str, Any]:
             complaint = create_complaint(db, user, ComplaintCreate(**payload), source="assistant")
             entity_type, entity_id = "complaint", complaint.id
             message = f"Complaint #{complaint.id} was submitted."
-        elif action.action_type == "pay_monthly_fee":
-            bill = db.get(Bill, payload["bill_id"])
-            if not bill or bill.billed_user_id != user.id: raise PermissionError("This bill is not available to this user")
-            if bill.outstanding <= 0: raise ValueError("This bill is already paid")
-            entity_type, entity_id = "bill", bill.id
-            message = f"Your ₹{bill.outstanding:,.2f} UPI payment is ready. Open Dues and tap 'Pay securely with UPI'. No money has been marked paid yet."
+        elif action.action_type == "pay_outstanding_dues":
+            bills = db.execute(select(Bill).where(Bill.id.in_(payload["bill_ids"]), Bill.billed_user_id == user.id)).scalars().all()
+            outstanding = round(sum(bill.outstanding for bill in bills), 2)
+            if outstanding <= 0: raise ValueError("These dues are already paid")
+            entity_type, entity_id = "dues_checkout", user.id
+            message = f"Your combined checkout for ₹{outstanding:,.2f} is ready below."
         elif action.action_type == "publish_announcement":
             if not (user.is_superuser or "admin" in user.role_names): raise PermissionError("Only an administrator can publish announcements")
             notice = Notice(society_id=user.society_id, author_id=user.id, title=payload["title"], body=payload["body"], audience=payload["audience"], is_pinned=payload["is_pinned"])

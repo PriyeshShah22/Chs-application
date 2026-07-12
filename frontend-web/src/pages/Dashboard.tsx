@@ -1,9 +1,10 @@
 import { Alert, Box, Button, Chip, CircularProgress, Paper, Skeleton, Stack, Typography } from "@mui/material";
-import { ArrowOutwardRounded, CampaignRounded, CurrencyRupeeRounded, EmergencyRounded, GroupsRounded, KeyboardRounded, MicRounded, NotificationsActiveRounded, PaymentsRounded, ReportProblemRounded, ShieldRounded, VolumeUpRounded } from "@mui/icons-material";
+import { ArrowOutwardRounded, CampaignRounded, CurrencyRupeeRounded, GroupsRounded, KeyboardRounded, MicRounded, NotificationsActiveRounded, PaymentsRounded, ReportProblemRounded, ShieldRounded, VolumeUpRounded } from "@mui/icons-material";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { Bill, Complaint, Notice, Visitor } from "../types/api";
+import { useLocalizedTexts } from "../components/LocalizedText";
 
 export default function Dashboard() {
   const go = useNavigate();
@@ -16,19 +17,20 @@ export default function Dashboard() {
   const due = bills.data?.filter((b) => b.status !== "paid").reduce((s, b) => s + Math.max(0, b.total_amount - b.paid_amount), 0) ?? 0;
   const inside = visitors.data?.filter((v) => v.status === "checked_in").length ?? 0;
   const latest = notices.data?.[0];
+  const [latestTitle, latestBody] = useLocalizedTexts([latest?.title ?? "", latest?.body ?? ""]);
   const readNotice = () => {
     if (!latest || !("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(new SpeechSynthesisUtterance(`${latest.title}. ${latest.body}`));
   };
   return <Stack spacing={3}>
-    <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "end" }} spacing={2}><Box><Typography variant="overline" color="primary" fontWeight={900} letterSpacing={2}>COMMUNITY DESK</Typography><Typography variant="h2" sx={{ fontSize: { xs: "2.6rem", md: "4.5rem" }, maxWidth: 760 }}>Say it. We’ll help get it done.</Typography></Box><Stack direction="row" spacing={1}><Button variant="outlined" color="inherit" startIcon={<VolumeUpRounded />}>Read page</Button><Button color="error" startIcon={<EmergencyRounded />}>Emergency</Button></Stack></Stack>
+    <Box><Typography variant="overline" color="primary" fontWeight={900} letterSpacing={2}>COMMUNITY DESK</Typography><Typography variant="h2" sx={{ fontSize: { xs: "2.6rem", md: "4.5rem" }, maxWidth: 760 }}>Say it. We’ll help get it done.</Typography></Box>
     {failed && <Alert severity="warning">Some live records are unavailable. You can still use every manual service.</Alert>}
     {latest && <Paper role="status" sx={{ p: { xs: 2, md: 2.5 }, border: 0, bgcolor: latest.is_pinned ? "#D76049" : "#E8A84E", color: "#fff", overflow: "hidden", position: "relative" }}>
       <Box sx={{ position: "absolute", width: 180, height: 180, borderRadius: "50%", bgcolor: "rgba(255,255,255,.08)", right: -45, top: -70 }} />
       <Stack direction={{ xs: "column", md: "row" }} alignItems={{ md: "center" }} spacing={2} sx={{ position: "relative" }}>
         <Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: "rgba(255,255,255,.16)", display: "grid", placeItems: "center", flexShrink: 0 }}><NotificationsActiveRounded /></Box>
-        <Box sx={{ minWidth: 0, flex: 1 }}><Typography variant="overline" fontWeight={900} letterSpacing={1.4}>{latest.is_pinned ? "IMPORTANT NOTICE" : "NEW SOCIETY NOTICE"}</Typography><Typography variant="h5" sx={{ lineHeight: 1.2 }}>{latest.title}</Typography><Typography sx={{ mt: .5, opacity: .9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: { md: "nowrap" } }}>{latest.body}</Typography></Box>
+        <Box sx={{ minWidth: 0, flex: 1 }}><Typography variant="overline" fontWeight={900} letterSpacing={1.4}>{latest.is_pinned ? "IMPORTANT NOTICE" : "NEW SOCIETY NOTICE"}</Typography><Typography variant="h5" sx={{ lineHeight: 1.2 }}>{latestTitle}</Typography><Typography sx={{ mt: .5, opacity: .9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: { md: "nowrap" } }}>{latestBody}</Typography></Box>
         <Stack direction="row" spacing={1}><Button variant="contained" onClick={() => go("/notices")} sx={{ bgcolor: "#fff", color: "#27342F", "&:hover": { bgcolor: "#FFF7E8" } }}>View notice</Button><Button aria-label="Read important notice aloud" onClick={readNotice} sx={{ color: "#fff", border: "1px solid rgba(255,255,255,.45)" }}><VolumeUpRounded /></Button></Stack>
       </Stack>
     </Paper>}

@@ -1,87 +1,27 @@
-import { Box, Grid, Paper, Stack, Typography, Chip, Divider } from "@mui/material";
+import { Box, Button, Chip, LinearProgress, Paper, Stack, Typography } from "@mui/material";
+import { CampaignRounded, GroupsRounded, HistoryRounded, PaymentsRounded, ReportProblemRounded, TrendingUpRounded } from "@mui/icons-material";
 import { useQuery } from "@tanstack/react-query";
 import dayjs from "dayjs";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import { KpiCard } from "../components/KpiCard";
 import { LoadingPanel } from "../components/StateViews";
+import { useI18n } from "../store/language";
+import type { AdminStats, Bill } from "../types/api";
 
-interface AuditRow {
-  id: number;
-  actor_id: number | null;
-  action: string;
-  entity_type: string | null;
-  entity_id: number | null;
-  details: string | null;
-  created_at: string;
-}
-
+interface AuditRow { id: number; actor_id: number | null; action: string; entity_type: string | null; entity_id: number | null; details: string | null; created_at: string }
 export default function Admin() {
-  const stats = useQuery({
-    queryKey: ["admin-stats"],
-    queryFn: async () => (await api.get("/admin/stats")).data,
-  });
-  const logs = useQuery({
-    queryKey: ["audit-logs"],
-    queryFn: async () => (await api.get("/admin/audit-logs?limit=20")).data,
-  });
-
-  if (stats.isLoading || logs.isLoading) return <LoadingPanel />;
-
-  return (
-    <Box>
-      <Typography variant="h4">Admin Console</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Society-level metrics and audit trail.
-      </Typography>
-
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm={6} md={4}>
-          <KpiCard title="Users total" value={stats.data?.users_total ?? 0} color="#0F62FE" />
-        </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <KpiCard title="Active users" value={stats.data?.users_active ?? 0} color="#00B894" />
-        </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <KpiCard title="Complaints total" value={stats.data?.complaints_total ?? 0} color="#E17055" />
-        </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <KpiCard title="Complaints open" value={stats.data?.complaints_open ?? 0} color="#7C4DFF" />
-        </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <KpiCard title="Overdue bills" value={stats.data?.bills_overdue ?? 0} color="#FDCB6E" />
-        </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <KpiCard
-            title="Outstanding ₹"
-            value={(stats.data?.outstanding_amount ?? 0).toLocaleString("en-IN")}
-            color="#0984E3"
-          />
-        </Grid>
-
-        <Grid item xs={12}>
-          <Paper sx={{ p: 2, borderRadius: 3 }}>
-            <Typography variant="h6" sx={{ mb: 1 }}>Recent audit events</Typography>
-            <Divider sx={{ mb: 1 }} />
-            <Stack spacing={1}>
-              {((logs.data as AuditRow[]) || []).map((row) => (
-                <Stack key={row.id} direction="row" justifyContent="space-between" alignItems="center">
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {row.action}
-                      {row.entity_type && (
-                        <Chip size="small" label={`${row.entity_type}#${row.entity_id ?? "?"}`} sx={{ ml: 1 }} />
-                      )}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      actor #{row.actor_id ?? "—"} · {dayjs(row.created_at).format("DD MMM HH:mm:ss")}
-                    </Typography>
-                  </Box>
-                </Stack>
-              ))}
-            </Stack>
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
-  );
+  const go = useNavigate(); const { t } = useI18n();
+  const stats = useQuery({ queryKey: ["admin-stats"], queryFn: async () => (await api.get<AdminStats>("/admin/stats")).data });
+  const logs = useQuery({ queryKey: ["audit-logs"], queryFn: async () => (await api.get<AuditRow[]>("/admin/audit-logs?limit=30")).data });
+  const bills = useQuery({ queryKey: ["bills", "admin-overview"], queryFn: async () => (await api.get<Bill[]>("/bills/?limit=200")).data });
+  if (stats.isLoading || logs.isLoading || bills.isLoading) return <LoadingPanel />;
+  const billed = (bills.data ?? []).reduce((sum, bill) => sum + bill.total_amount, 0); const collected = (bills.data ?? []).reduce((sum, bill) => sum + bill.paid_amount, 0); const progress = billed ? Math.round(collected / billed * 100) : 0;
+  return <Stack spacing={3}><Box><Typography variant="overline" color="primary" fontWeight={900}>SOCIETY OPERATIONS</Typography><Typography variant="h2" sx={{ fontSize: { xs: "2.5rem", md: "3.8rem" } }}>{t("Admin Console")}</Typography><Typography color="text.secondary" sx={{ mt: 1 }}>One place to understand collections, complaints, members, and recent administrative actions.</Typography></Box>
+    <Paper sx={{ p: { xs: 3, md: 4 }, bgcolor: "#173F35", color: "white", border: 0 }}><Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={3}><Box><Typography variant="overline" sx={{ opacity: .65 }}>MAINTENANCE COLLECTION</Typography><Typography variant="h3">₹{collected.toLocaleString("en-IN")}</Typography><Typography sx={{ opacity: .72 }}>of ₹{billed.toLocaleString("en-IN")} billed</Typography></Box><Box sx={{ minWidth: { md: 360 }, alignSelf: { md: "end" } }}><Stack direction="row" justifyContent="space-between"><Typography fontWeight={800}>Collected</Typography><Typography>{progress}%</Typography></Stack><LinearProgress variant="determinate" value={progress} color="secondary" sx={{ mt: 1, height: 12, borderRadius: 1 }} /><Button color="secondary" startIcon={<PaymentsRounded />} onClick={() => go("/bills")} sx={{ mt: 2 }}>Open monthly billing</Button></Box></Stack></Paper>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2,1fr)", lg: "repeat(4,1fr)" }, gap: 1.5 }}><Metric label="Active residents" value={stats.data?.users_active ?? 0} icon={<GroupsRounded />} color="#3A6EA5" /><Metric label="Open complaints" value={stats.data?.complaints_open ?? 0} icon={<ReportProblemRounded />} color="#D76049" /><Metric label="Overdue bills" value={stats.data?.bills_overdue ?? 0} icon={<PaymentsRounded />} color="#C67A20" /><Metric label="Total users" value={stats.data?.users_total ?? 0} icon={<TrendingUpRounded />} color="#2B805F" /></Box>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "340px 1fr" }, gap: 2 }}><Paper sx={{ p: 3 }}><Typography variant="h5">Quick actions</Typography><Stack spacing={1.25} sx={{ mt: 2 }}><Quick icon={<PaymentsRounded />} label="Bill everyone this month" onClick={() => go("/bills")} /><Quick icon={<ReportProblemRounded />} label="Manage complaints" onClick={() => go("/complaints")} /><Quick icon={<CampaignRounded />} label="Publish a notice" onClick={() => go("/notices")} /><Quick icon={<GroupsRounded />} label="Manage people and roles" onClick={() => go("/residents")} /></Stack></Paper><Paper sx={{ p: 3 }}><Stack direction="row" spacing={1} alignItems="center"><HistoryRounded color="primary" /><Typography variant="h5">Recent activity</Typography></Stack><Stack spacing={0} sx={{ mt: 2 }}>{(logs.data ?? []).slice(0, 12).map((row) => <Stack key={row.id} direction="row" spacing={2} sx={{ py: 1.5, borderBottom: 1, borderColor: "divider" }}><Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: "primary.main", mt: .8, flexShrink: 0 }} /><Box sx={{ flex: 1 }}><Stack direction="row" justifyContent="space-between" spacing={1}><Typography fontWeight={800}>{humanize(row.action)}</Typography><Typography variant="caption" color="text.secondary">{dayjs(row.created_at).format("DD MMM, HH:mm")}</Typography></Stack><Stack direction="row" spacing={1} sx={{ mt: .5 }}>{row.entity_type && <Chip size="small" label={`${row.entity_type} #${row.entity_id ?? "—"}`} />}{row.details && <Typography variant="caption" color="text.secondary" noWrap>{row.details}</Typography>}</Stack></Box></Stack>)}</Stack></Paper></Box>
+  </Stack>;
 }
+function Metric({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) { return <Paper sx={{ p: 2.5, borderTop: `4px solid ${color}` }}><Stack direction="row" justifyContent="space-between"><Box><Typography variant="h4">{value}</Typography><Typography variant="body2" color="text.secondary">{label}</Typography></Box><Box sx={{ color }}>{icon}</Box></Stack></Paper>; }
+function Quick({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) { return <Button variant="outlined" color="inherit" startIcon={icon} onClick={onClick} sx={{ justifyContent: "flex-start", py: 1.25 }}>{label}</Button>; }
+function humanize(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }

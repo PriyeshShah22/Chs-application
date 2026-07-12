@@ -9,13 +9,6 @@ from sqlalchemy.orm import Session
 from app.models.bill import Bill, BillLineItem, BillStatus, Payment
 from app.models.user import User
 
-CHARGE_HEADS = (
-    ("maintenance", "Normal Maintenance"),
-    ("water", "Water"),
-    ("electricity", "Electricity"),
-)
-
-
 def _next_bill_number(db: Session, society_id: int, year: int) -> str:
     prefix = f"BILL-{society_id}-{year}-"
     last = db.execute(select(Bill).where(Bill.bill_number.like(f"{prefix}%")).order_by(Bill.id.desc()).limit(1)).scalars().first()
@@ -28,16 +21,14 @@ def _next_bill_number(db: Session, society_id: int, year: int) -> str:
 
 def create_user_bill(db: Session, *, society_id: int, billed_user: User, billing_year: int,
                      billing_month: int, due_date: date, maintenance_amount: float,
-                     water_amount: float, electricity_amount: float, description: str | None = None) -> Bill:
+                     description: str | None = None, commit: bool = True) -> Bill:
     if billed_user.society_id != society_id or "resident" not in billed_user.role_names:
         raise ValueError("Bills can only be created for resident accounts in this society")
     if billing_month < 1 or billing_month > 12: raise ValueError("Invalid billing month")
     existing = db.execute(select(Bill).where(Bill.billed_user_id == billed_user.id,
         Bill.billing_year == billing_year, Bill.billing_month == billing_month)).scalar_one_or_none()
     if existing: raise ValueError("This resident already has a bill for that month")
-    amounts = [maintenance_amount, water_amount, electricity_amount]
-    if any(value < 0 for value in amounts): raise ValueError("Charge amounts cannot be negative")
-    total = round(sum(amounts), 2)
+    total = round(float(maintenance_amount), 2)
     if total <= 0: raise ValueError("Bill total must be greater than zero")
     resident = billed_user.resident
     if not resident: raise ValueError("Resident does not have a household/flat mapping")
@@ -49,10 +40,34 @@ def create_user_bill(db: Session, *, society_id: int, billed_user: User, billing
         late_fee=0, total_amount=total, paid_amount=0, status=BillStatus.pending,
         issue_date=date.today(), due_date=due_date)
     db.add(bill); db.flush()
-    for (code, label), amount in zip(CHARGE_HEADS, amounts):
-        db.add(BillLineItem(bill_id=bill.id, code=code, label=label, amount=round(float(amount), 2)))
-    db.commit(); db.refresh(bill)
+    db.add(BillLineItem(bill_id=bill.id, code="maintenance", label="Monthly Maintenance", amount=total))
+    if commit:
+        db.commit(); db.refresh(bill)
     return bill
+
+
+def create_society_monthly_bills(db: Session, *, society_id: int, billing_year: int,
+                                 billing_month: int, due_date: date,
+                                 maintenance_amount: float) -> tuple[int, int]:
+    residents = db.execute(select(User).where(User.society_id == society_id)).scalars().all()
+    eligible = [user for user in residents if "resident" in user.role_names and user.resident]
+    created = skipped = 0
+    for user in eligible:
+        exists = db.execute(select(Bill.id).where(
+            Bill.billed_user_id == user.id,
+            Bill.billing_year == billing_year,
+            Bill.billing_month == billing_month,
+        )).scalar_one_or_none()
+        if exists:
+            skipped += 1
+            continue
+        create_user_bill(db, society_id=society_id, billed_user=user,
+                         billing_year=billing_year, billing_month=billing_month,
+                         due_date=due_date, maintenance_amount=maintenance_amount,
+                         commit=False)
+        created += 1
+    db.commit()
+    return created, skipped
 
 
 def apply_late_fees_and_overdue(db: Session, society_id: int | None = None) -> int:

@@ -116,6 +116,7 @@ class PaymentAttempt(Base):
     provider: Mapped[str] = mapped_column(String(30), default="razorpay", nullable=False)
     provider_order_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     provider_payment_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True)
+    bill_ids_json: Mapped[Optional[str]] = mapped_column(Text)
     failure_reason: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

@@ -1,110 +1,27 @@
-import {
-  Box,
-  Button,
-  Chip,
-  Stack,
-  TextField,
-  Typography,
-  Paper,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-} from "@mui/material";
-import PushPinIcon from "@mui/icons-material/PushPin";
+import { useMemo, useState } from "react";
+import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, InputAdornment, MenuItem, Paper, Stack, Switch, Tab, Tabs, TextField, Typography } from "@mui/material";
+import { AddRounded, CampaignRounded, EventRounded, PushPinRounded, SearchRounded, VolumeUpRounded } from "@mui/icons-material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { enqueueSnackbar } from "notistack";
 import dayjs from "dayjs";
+import { enqueueSnackbar } from "notistack";
 import { api } from "../api/client";
-import { LoadingPanel } from "../components/StateViews";
+import { useAuthStore } from "../store/auth";
+import { useI18n } from "../store/language";
 import type { Notice } from "../types/api";
+import { LocalizedText, useLocalizedTexts } from "../components/LocalizedText";
 
 export default function Notices() {
-  const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
-    society_id: 1,
-    title: "",
-    body: "",
-    is_pinned: false,
-  });
-
-  const list = useQuery({
-    queryKey: ["notices"],
-    queryFn: async () => (await api.get<Notice[]>("/notices/")).data,
-  });
-
-  const create = useMutation({
-    mutationFn: async (payload: any) => (await api.post("/notices/", payload)).data,
-    onSuccess: () => {
-      enqueueSnackbar("Notice published", { variant: "success" });
-      qc.invalidateQueries({ queryKey: ["notices"] });
-      setOpen(false);
-    },
-    onError: (err: any) => enqueueSnackbar(err?.response?.data?.detail || "Failed", { variant: "error" }),
-  });
-
-  if (list.isLoading) return <LoadingPanel />;
-
-  return (
-    <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Box>
-          <Typography variant="h4">Notice Board</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Announcements and important society updates.
-          </Typography>
-        </Box>
-        <Button variant="contained" onClick={() => setOpen(true)}>+ New Notice</Button>
-      </Stack>
-
-      <Stack spacing={2}>
-        {(list.data || []).map((n) => (
-          <Paper key={n.id} sx={{ p: 2, borderRadius: 3 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  {n.is_pinned && <PushPinIcon fontSize="small" sx={{ mr: 1, color: "primary.main" }} />}
-                  {n.title}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {dayjs(n.published_at).format("DD MMM YYYY, HH:mm")} · audience: {n.audience}
-                </Typography>
-                <Typography variant="body1" sx={{ mt: 1, whiteSpace: "pre-wrap" }}>
-                  {n.body}
-                </Typography>
-              </Box>
-              <Chip label={n.is_pinned ? "Pinned" : "Regular"} size="small" />
-            </Stack>
-          </Paper>
-        ))}
-      </Stack>
-
-      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Publish Notice</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="Title" fullWidth value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-            <TextField label="Body" fullWidth multiline minRows={4} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
-            <Stack direction="row" spacing={1} alignItems="center">
-              <input
-                id="pin"
-                type="checkbox"
-                checked={form.is_pinned}
-                onChange={(e) => setForm({ ...form, is_pinned: e.target.checked })}
-              />
-              <label htmlFor="pin">Pin this notice</label>
-            </Stack>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" disabled={!form.title || !form.body || create.isPending} onClick={() => create.mutate(form)}>
-            Publish
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
-  );
+  const me = useAuthStore((state) => state.user); const canPublish = Boolean(me?.is_superuser || me?.roles.some((role) => ["admin", "committee"].includes(role.name))); const { t } = useI18n(); const qc = useQueryClient();
+  const [open, setOpen] = useState(false); const [tab, setTab] = useState("all"); const [search, setSearch] = useState(""); const [form, setForm] = useState({ society_id: me?.society_id, title: "", body: "", is_pinned: false, audience: "all", expires_at: "" });
+  const list = useQuery({ queryKey: ["notices"], queryFn: async () => (await api.get<Notice[]>("/notices/")).data });
+  const create = useMutation({ mutationFn: async () => api.post("/notices/", { ...form, expires_at: form.expires_at || null }), onSuccess: async () => { enqueueSnackbar("Notice published", { variant: "success" }); setOpen(false); setForm({ society_id: me?.society_id, title: "", body: "", is_pinned: false, audience: "all", expires_at: "" }); await qc.invalidateQueries({ queryKey: ["notices"] }); }, onError: (error: any) => enqueueSnackbar(error?.response?.data?.detail || "Notice could not be published", { variant: "error" }) });
+  const rows = useMemo(() => (list.data ?? []).filter((notice) => (tab === "all" || (tab === "important" && notice.is_pinned) || notice.audience === tab) && `${notice.title} ${notice.body}`.toLowerCase().includes(search.toLowerCase())), [list.data, search, tab]); const featured = rows.find((notice) => notice.is_pinned) ?? rows[0];
+  const [featuredTitle, featuredBody] = useLocalizedTexts([featured?.title ?? "", featured?.body ?? ""]);
+  const read = (notice: Notice) => { speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(`${notice.title}. ${notice.body}`); speechSynthesis.speak(utterance); };
+  return <Stack spacing={3}><Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ md: "end" }} spacing={2}><Box><Typography variant="overline" color="primary" fontWeight={900}>OFFICIAL UPDATES</Typography><Typography variant="h2" sx={{ fontSize: { xs: "2.5rem", md: "3.8rem" } }}>{t("Notice Board")}</Typography><Typography color="text.secondary" sx={{ mt: 1 }}>Important society information, arranged so urgent updates are impossible to miss.</Typography></Box>{canPublish && <Button variant="contained" size="large" startIcon={<AddRounded />} onClick={() => setOpen(true)}>{t("New notice")}</Button>}</Stack>
+    {featured && <Paper sx={{ p: { xs: 3, md: 5 }, bgcolor: featured.is_pinned ? "#D76049" : "#173F35", color: "white", border: 0, position: "relative", overflow: "hidden" }}><Box sx={{ position: "absolute", width: 260, height: 260, borderRadius: "50%", bgcolor: "rgba(255,255,255,.07)", right: -70, top: -110 }} /><Stack direction="row" spacing={1} alignItems="center"><PushPinRounded /><Typography variant="overline" fontWeight={900}>{featured.is_pinned ? "IMPORTANT NOTICE" : "LATEST NOTICE"}</Typography></Stack><Typography variant="h3" sx={{ mt: 2, maxWidth: 850 }}>{featuredTitle}</Typography><Typography sx={{ mt: 1.5, maxWidth: 900, fontSize: "1.05rem", opacity: .9, whiteSpace: "pre-wrap" }}>{featuredBody}</Typography><Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 3 }}><Chip label={dayjs(featured.published_at).format("DD MMM YYYY")} sx={{ bgcolor: "rgba(255,255,255,.15)", color: "white" }} /><Button color="inherit" startIcon={<VolumeUpRounded />} onClick={() => read(featured)}>Read aloud</Button></Stack></Paper>}
+    <Paper sx={{ p: 1.5 }}><Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1}><Tabs value={tab} onChange={(_event, value) => setTab(value)} variant="scrollable"><Tab value="all" label="All" /><Tab value="important" label="Important" /><Tab value="residents" label="Residents" /><Tab value="committee" label="Committee" /></Tabs><TextField size="small" placeholder="Search notices" value={search} onChange={(event) => setSearch(event.target.value)} InputProps={{ startAdornment: <InputAdornment position="start"><SearchRounded /></InputAdornment> }} /></Stack></Paper>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "repeat(2,1fr)" }, gap: 2 }}>{rows.filter((notice) => notice.id !== featured?.id).map((notice) => <Paper key={notice.id} sx={{ p: 3 }}><Stack direction="row" justifyContent="space-between"><Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: "action.hover", display: "grid", placeItems: "center", color: "primary.main" }}><CampaignRounded /></Box>{notice.is_pinned && <Chip icon={<PushPinRounded />} label="Important" color="error" size="small" />}</Stack><Typography variant="h5" sx={{ mt: 2 }}><LocalizedText>{notice.title}</LocalizedText></Typography><Typography color="text.secondary" sx={{ mt: 1, whiteSpace: "pre-wrap" }}><LocalizedText>{notice.body}</LocalizedText></Typography><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 3 }}><Stack direction="row" spacing={1} alignItems="center"><EventRounded fontSize="small" /><Typography variant="caption">{dayjs(notice.published_at).format("DD MMM YYYY")}</Typography></Stack><Button size="small" startIcon={<VolumeUpRounded />} onClick={() => read(notice)}>Listen</Button></Stack></Paper>)}</Box>{!list.isLoading && rows.length === 0 && <Alert severity="info">No notices match this view.</Alert>}
+    <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm"><DialogTitle>Publish an official notice</DialogTitle><DialogContent><Stack spacing={2} sx={{ mt: 1 }}><TextField label="Notice title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /><TextField label="Message" multiline minRows={5} value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} /><TextField select label="Audience" value={form.audience} onChange={(event) => setForm({ ...form, audience: event.target.value })}><MenuItem value="all">Everyone</MenuItem><MenuItem value="residents">Residents</MenuItem><MenuItem value="committee">Committee</MenuItem></TextField><TextField type="datetime-local" label="Expires (optional)" InputLabelProps={{ shrink: true }} value={form.expires_at} onChange={(event) => setForm({ ...form, expires_at: event.target.value })} /><FormControlLabel control={<Switch checked={form.is_pinned} onChange={(event) => setForm({ ...form, is_pinned: event.target.checked })} />} label="Show as an important notice on Home" /></Stack></DialogContent><DialogActions><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="contained" disabled={!form.title.trim() || !form.body.trim() || create.isPending} onClick={() => create.mutate()}>Publish notice</Button></DialogActions></Dialog>
+  </Stack>;
 }

@@ -21,6 +21,7 @@ from app.core.security import (
 from app.db.base import get_db
 from app.models.audit import AuditLog
 from app.models.user import Role, User, UserStatus
+from app.models.society import Block, Flat, Society
 from app.schemas.auth import (
     LoginRequest,
     PasswordChangeRequest,
@@ -34,6 +35,22 @@ from app.schemas.user import RoleOut, UserOut
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.get("/societies")
+def public_societies(db: Session = Depends(get_db)) -> list[dict]:
+    """Minimal public directory used only to select a verified membership address."""
+    societies = db.execute(select(Society).order_by(Society.name)).scalars().all()
+    result = []
+    for society in societies:
+        blocks = db.execute(select(Block).where(Block.society_id == society.id).order_by(Block.name)).scalars().all()
+        result.append({"id": society.id, "name": society.name, "buildings": [{
+            "id": block.id, "name": block.name,
+            "flats": [{"id": flat.id, "number": flat.number} for flat in db.execute(
+                select(Flat).where(Flat.block_id == block.id).order_by(Flat.number)
+            ).scalars().all()],
+        } for block in blocks]})
+    return result
 
 
 def _build_token_response(user: User) -> TokenResponse:
@@ -82,6 +99,8 @@ def request_to_join(payload: JoinRequestCreate, db: Session = Depends(get_db)) -
         date_of_birth=payload.date_of_birth,
         hashed_password=hash_password(payload.password),
         society_id=payload.society_id,
+        building_name=payload.building_name.strip(),
+        flat_number=payload.flat_number.strip(),
         status=JoinRequestStatus.pending,
     )
     db.add(request)

@@ -72,6 +72,7 @@ class Complaint(Base):
         "ComplaintEvent", back_populates="complaint", cascade="all, delete-orphan",
         order_by="ComplaintEvent.created_at",
     )
+    flat: Mapped[Optional["Flat"]] = relationship("Flat")
 
 
 class ComplaintComment(Base):
@@ -104,3 +105,4 @@ class ComplaintEvent(Base):
 
 
 from app.models.user import User  # noqa: E402
+from app.models.society import Flat  # noqa: E402

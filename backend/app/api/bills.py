@@ -16,8 +16,8 @@ from app.models.bill import Bill, BillStatus, PaymentAttempt, PaymentAttemptStat
 from app.models.resident import Resident
 from app.models.society import Flat
 from app.models.user import User
-from app.schemas.bill import BillCreate, BillOut, PaymentCreate, PaymentOrderOut, PaymentOut, PaymentVerify
-from app.services.billing_service import apply_late_fees_and_overdue, create_user_bill, record_payment
+from app.schemas.bill import BillCreate, BillOut, DuesSummaryOut, MonthlyBillingResult, PaymentCreate, PaymentOrderOut, PaymentOut, PaymentVerify
+from app.services.billing_service import apply_late_fees_and_overdue, create_society_monthly_bills, record_payment
 from app.services.razorpay_service import configured as razorpay_configured
 from app.services.razorpay_service import create_order, verify_checkout_signature, verify_webhook_signature
 from app.services.report_service import save_bill_pdf
@@ -45,7 +45,7 @@ def _authorize_bill(user: User, bill: Bill) -> None:
 
 @router.get("/payment-config")
 def payment_config(current=Depends(get_current_user)):
-    return {"razorpay_enabled": razorpay_configured(), "currency": "INR", "method": "upi"}
+    return {"razorpay_enabled": razorpay_configured(), "demo_enabled": not razorpay_configured(), "currency": "INR", "method": "upi"}
 
 
 @router.get("/", response_model=List[BillOut])
@@ -60,17 +60,50 @@ def list_bills(db: Session = Depends(get_db), current: User = Depends(get_curren
     return [BillOut.model_validate(row) for row in db.execute(query.order_by(desc(Bill.issue_date)).limit(limit)).scalars().unique().all()]
 
 
-@router.post("/", response_model=BillOut, status_code=201)
+@router.post("/monthly", response_model=MonthlyBillingResult, status_code=201)
 def create_bill(payload: BillCreate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     require_any_role(current, ["admin"])
-    user = db.get(User, payload.billed_user_id)
-    if not user: raise HTTPException(status_code=404, detail="Resident not found")
     try:
-        bill = create_user_bill(db, society_id=current.society_id, billed_user=user, **payload.model_dump(exclude={"billed_user_id"}))
-    except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
-    db.add(AuditLog(actor_id=current.id, action="bill_created", entity_type="bill", entity_id=bill.id,
-                    details=f"user={user.id};period={payload.billing_year}-{payload.billing_month:02d}")); db.commit()
-    return BillOut.model_validate(_get_bill(db, bill.id))
+        created, skipped = create_society_monthly_bills(db, society_id=current.society_id, **payload.model_dump())
+    except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+    db.add(AuditLog(actor_id=current.id, action="monthly_bills_created", entity_type="bill", entity_id=None,
+                    details=f"created={created};skipped={skipped};period={payload.billing_year}-{payload.billing_month:02d};amount={payload.maintenance_amount}")); db.commit()
+    return MonthlyBillingResult(created=created, skipped=skipped,
+        total_amount=round(created * payload.maintenance_amount, 2),
+        billing_year=payload.billing_year, billing_month=payload.billing_month)
+
+
+def _resident_unpaid(db: Session, user: User) -> list[Bill]:
+    return db.execute(_bill_query().where(
+        Bill.billed_user_id == user.id,
+        Bill.status.in_([BillStatus.pending, BillStatus.overdue, BillStatus.partial]),
+    ).order_by(Bill.issue_date)).scalars().unique().all()
+
+
+@router.get("/dues-summary", response_model=DuesSummaryOut)
+def dues_summary(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    bills = _resident_unpaid(db, current)
+    return DuesSummaryOut(bill_count=len(bills), total_outstanding=round(sum(b.outstanding for b in bills), 2),
+        oldest_due_date=min((b.due_date for b in bills), default=None), bill_ids=[b.id for b in bills],
+        demo_enabled=not razorpay_configured())
+
+
+@router.post("/payments/demo")
+def demo_payment(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    if razorpay_configured():
+        raise HTTPException(status_code=409, detail="Demo checkout is disabled because Razorpay is configured")
+    bills = _resident_unpaid(db, current)
+    if not bills: raise HTTPException(status_code=409, detail="There are no outstanding maintenance dues")
+    total = 0.0
+    reference = f"DEMO-{current.id}-{int(__import__('time').time())}"
+    for bill in bills:
+        amount = bill.outstanding
+        record_payment(db, bill, amount, PaymentMethod.upi.value, reference, current.id,
+                       "DEMO PAYMENT ONLY - no real money transferred")
+        total += amount
+    db.add(AuditLog(actor_id=current.id, action="demo_dues_paid", entity_type="payment", entity_id=None,
+                    details=f"bills={len(bills)};amount={total};reference={reference}")); db.commit()
+    return {"status": "paid", "demo": True, "bill_count": len(bills), "amount": round(total, 2), "reference": reference}
 
 
 @router.post("/sweep-overdue")
@@ -105,6 +138,24 @@ def payment_order(bill_id: int, db: Session = Depends(get_db), current: User = D
         key_id=settings.RAZORPAY_KEY_ID, bill_number=bill.bill_number, resident_name=current.full_name)
 
 
+@router.post("/payment-order", response_model=PaymentOrderOut)
+def combined_payment_order(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    bills = _resident_unpaid(db, current)
+    if not bills: raise HTTPException(status_code=409, detail="There are no outstanding maintenance dues")
+    if not razorpay_configured(): raise HTTPException(status_code=503, detail="Online UPI payment is not configured")
+    total = round(sum(bill.outstanding for bill in bills), 2); amount_paise = int(round(total * 100))
+    receipt = f"DUES-{current.id}-{int(__import__('time').time())}"
+    try: order = create_order(amount_paise=amount_paise, receipt=receipt,
+        notes={"bill_ids": ",".join(str(b.id) for b in bills), "user_id": str(current.id), "society_id": str(current.society_id)})
+    except Exception as exc: raise HTTPException(status_code=502, detail="Payment provider could not create an order") from exc
+    attempt = PaymentAttempt(bill_id=bills[0].id, user_id=current.id, amount=total,
+        status=PaymentAttemptStatus.created, provider_order_id=order["id"],
+        bill_ids_json=json.dumps([bill.id for bill in bills]))
+    db.add(attempt); db.commit(); db.refresh(attempt)
+    return PaymentOrderOut(attempt_id=attempt.id, order_id=order["id"], amount_paise=amount_paise,
+        key_id=settings.RAZORPAY_KEY_ID, bill_number=f"{len(bills)} maintenance bill(s)", resident_name=current.full_name)
+
+
 @router.post("/payments/verify")
 def verify_payment(payload: PaymentVerify, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     attempt = db.execute(select(PaymentAttempt).where(PaymentAttempt.provider_order_id == payload.razorpay_order_id)).scalar_one_or_none()
@@ -128,12 +179,15 @@ async def razorpay_webhook(request: Request, x_razorpay_signature: str = Header(
         attempt.status = PaymentAttemptStatus.failed; attempt.failure_reason = payment.get("error_description"); db.commit(); return {"ok": True}
     if event not in {"payment.captured", "order.paid"}: return {"ok": True}
     if attempt.status == PaymentAttemptStatus.captured: return {"ok": True}
-    bill = db.get(Bill, attempt.bill_id)
+    bill_ids = json.loads(attempt.bill_ids_json) if attempt.bill_ids_json else [attempt.bill_id]
+    bills = db.execute(select(Bill).where(Bill.id.in_(bill_ids), Bill.billed_user_id == attempt.user_id)).scalars().all()
     amount = round(float(payment.get("amount", 0)) / 100, 2)
-    if not bill or amount != round(attempt.amount, 2) or amount > bill.outstanding:
+    current_total = round(sum(bill.outstanding for bill in bills), 2)
+    if not bills or amount != round(attempt.amount, 2) or amount != current_total:
         attempt.status = PaymentAttemptStatus.failed; attempt.failure_reason = "Provider amount did not match outstanding bill"; db.commit(); return {"ok": True}
     attempt.provider_payment_id = payment_id; attempt.status = PaymentAttemptStatus.captured; db.flush()
-    record_payment(db, bill, amount, PaymentMethod.upi.value, payment_id, attempt.user_id, "Verified Razorpay capture")
+    for bill in bills:
+        record_payment(db, bill, bill.outstanding, PaymentMethod.upi.value, payment_id, attempt.user_id, "Verified combined Razorpay capture")
     return {"ok": True}
 
 

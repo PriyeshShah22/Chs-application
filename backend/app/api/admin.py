@@ -13,6 +13,8 @@ from app.models.bill import Bill, BillStatus
 from app.models.complaint import Complaint, ComplaintStatus
 from app.models.user import User, UserStatus
 from app.models.user import Role
+from app.models.resident import Resident
+from app.models.society import Block, Flat
 from app.models.join_request import JoinRequest, JoinRequestStatus
 from app.core.security import hash_password
 from app.schemas.join_request import JoinRequestOut
@@ -39,6 +41,14 @@ def approve_join_request(request_id: int, db: Session = Depends(get_db), current
         raise HTTPException(status_code=404, detail="Pending membership request not found")
     if request.society_id and request.society_id != current.society_id:
         raise HTTPException(status_code=403, detail="Request belongs to another society")
+    block = db.execute(select(Block).where(Block.society_id == current.society_id,
+                                           Block.name == request.building_name)).scalar_one_or_none()
+    if not block:
+        raise HTTPException(status_code=409, detail="The requested building no longer exists")
+    flat = db.execute(select(Flat).where(Flat.block_id == block.id,
+                                         Flat.number == request.flat_number)).scalar_one_or_none()
+    if not flat:
+        raise HTTPException(status_code=409, detail="The requested flat does not exist in that building")
     if db.execute(select(User).where(User.email == request.email)).scalar_one_or_none():
         raise HTTPException(status_code=409, detail="An account already exists for this email")
     resident_role = db.execute(select(Role).where(Role.name == "resident")).scalar_one_or_none()
@@ -57,6 +67,7 @@ def approve_join_request(request_id: int, db: Session = Depends(get_db), current
     user.roles.append(resident_role)
     db.add(user)
     db.flush()
+    db.add(Resident(user_id=user.id, flat_id=flat.id, ownership="owner"))
     request.status = JoinRequestStatus.approved
     request.reviewer_id = current.id
     request.reviewed_at = datetime.utcnow()

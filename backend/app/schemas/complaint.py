@@ -56,6 +56,20 @@ class ComplaintEventOut(BaseModel):
     created_at: datetime
 
 
+class ComplaintBlockOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+
+
+class ComplaintFlatOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    number: str
+    floor: int
+    block: ComplaintBlockOut
+
+
 class ComplaintOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -76,6 +90,7 @@ class ComplaintOut(BaseModel):
     reporter: Optional[ComplaintPersonOut] = None
     assignee: Optional[ComplaintPersonOut] = None
     events: List[ComplaintEventOut] = []
+    flat: Optional[ComplaintFlatOut] = None
 
 
 class ComplaintCommentCreate(BaseModel):

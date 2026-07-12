@@ -209,13 +209,12 @@ def main() -> None:
                            purpose="Personal visit", vehicle_number="MH12AB1234",
                            status=VisitorStatus.approved))
 
-        # One idempotent demo bill. Real monthly bills are entered by an admin per resident.
+        # One idempotent maintenance-only demo bill. Admins normally bill every resident in one action.
         if not db.query(Bill).first():
             create_user_bill(db, society_id=soc.id, billed_user=resident_admin,
                 billing_year=date.today().year, billing_month=date.today().month,
-                due_date=date.today() + timedelta(days=15), maintenance_amount=1800,
-                water_amount=400, electricity_amount=300,
-                description="Demonstration bill with itemized society charges")
+                due_date=date.today() + timedelta(days=15), maintenance_amount=2500,
+                description="Demonstration monthly society maintenance")
 
         db.commit()
         # Keep console output compatible with the default Windows code page.

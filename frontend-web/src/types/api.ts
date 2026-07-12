@@ -68,6 +68,7 @@ export interface Complaint {
   reporter?: { id: number; full_name: string; email: string; phone?: string | null } | null;
   assignee?: { id: number; full_name: string; email: string; phone?: string | null } | null;
   events: { id: number; actor_id: number; from_status?: string | null; to_status: string; reason?: string | null; created_at: string }[];
+  flat?: { id: number; number: string; floor: number; block: { id: number; name: string } } | null;
 }
 
 export interface Visitor {

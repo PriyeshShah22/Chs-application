@@ -8,12 +8,14 @@ import App from "./App";
 import { useThemeStore } from "./store/theme";
 import { buildTheme } from "./theme/theme";
 import { queryClient } from "./store/queryClient";
+import { SiteTranslator } from "./components/SiteTranslator";
 
 function Root() {
   const mode = useThemeStore((s) => s.mode);
   const theme = React.useMemo(() => buildTheme(mode), [mode]);
   return (
     <ThemeProvider theme={theme}>
+      <SiteTranslator />
       <CssBaseline />
       <SnackbarProvider maxSnack={3} anchorOrigin={{ vertical: "top", horizontal: "right" }}>
         <QueryClientProvider client={queryClient}>

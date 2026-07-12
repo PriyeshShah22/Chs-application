@@ -10,7 +10,9 @@ class JoinRequestCreate(BaseModel):
     phone: Optional[str] = Field(default=None, max_length=20)
     date_of_birth: date
     password: str = Field(min_length=8, max_length=128)
-    society_id: Optional[int] = None
+    society_id: int
+    building_name: str = Field(min_length=1, max_length=100)
+    flat_number: str = Field(min_length=1, max_length=50)
 
 
 class JoinRequestOut(BaseModel):
@@ -21,6 +23,8 @@ class JoinRequestOut(BaseModel):
     phone: Optional[str] = None
     date_of_birth: date
     society_id: Optional[int] = None
+    building_name: str
+    flat_number: str
     status: str
     created_at: datetime
     reviewed_at: Optional[datetime] = None
