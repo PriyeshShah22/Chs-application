@@ -6,6 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy import desc, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
@@ -17,7 +18,7 @@ from app.models.resident import Resident
 from app.models.society import Flat
 from app.models.user import User
 from app.schemas.bill import BillCreate, BillOut, DuesSummaryOut, MonthlyBillingResult, PaymentCreate, PaymentOrderOut, PaymentOut, PaymentVerify
-from app.services.billing_service import apply_late_fees_and_overdue, create_society_monthly_bills, record_payment
+from app.services.billing_service import MonthlyBillingConflict, apply_late_fees_and_overdue, create_society_monthly_bills, record_payment
 from app.services.razorpay_service import configured as razorpay_configured
 from app.services.razorpay_service import create_order, verify_checkout_signature, verify_webhook_signature
 from app.services.report_service import save_bill_pdf
@@ -65,6 +66,10 @@ def create_bill(payload: BillCreate, db: Session = Depends(get_db), current: Use
     require_any_role(current, ["admin"])
     try:
         created, skipped = create_society_monthly_bills(db, society_id=current.society_id, **payload.model_dump())
+    except MonthlyBillingConflict as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="This month was billed by another request") from exc
     except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
     db.add(AuditLog(actor_id=current.id, action="monthly_bills_created", entity_type="bill", entity_id=None,
                     details=f"created={created};skipped={skipped};period={payload.billing_year}-{payload.billing_month:02d};amount={payload.maintenance_amount}")); db.commit()

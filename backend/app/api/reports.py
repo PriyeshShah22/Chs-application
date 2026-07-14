@@ -23,7 +23,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 def complaints_report(db: Session = Depends(get_db),
                       current=Depends(get_current_user)):
     require_any_role(current, ["admin", "committee"])
-    rows = db.execute(select(Complaint).order_by(desc(Complaint.created_at))
+    rows = db.execute(select(Complaint).where(Complaint.society_id == current.society_id).order_by(desc(Complaint.created_at))
                       .limit(500)).scalars().all()
     data = [
         {
@@ -50,7 +50,7 @@ def complaints_report(db: Session = Depends(get_db),
 def bills_report(db: Session = Depends(get_db),
                  current=Depends(get_current_user)):
     require_any_role(current, ["admin", "committee"])
-    rows = db.execute(select(Bill).order_by(desc(Bill.created_at)).limit(500)).scalars().all()
+    rows = db.execute(select(Bill).where(Bill.society_id == current.society_id).order_by(desc(Bill.created_at)).limit(500)).scalars().all()
     data = [
         {
             "bill_number": b.bill_number,
@@ -78,7 +78,7 @@ def visitors_report(db: Session = Depends(get_db),
                     current=Depends(get_current_user)):
     require_any_role(current, ["admin", "committee", "security"])
     since = datetime.utcnow() - timedelta(days=30)
-    rows = db.execute(select(Visitor).where(Visitor.created_at >= since)
+    rows = db.execute(select(Visitor).where(Visitor.created_at >= since, Visitor.society_id == current.society_id)
                       .order_by(desc(Visitor.created_at)).limit(500)).scalars().all()
     data = [
         {

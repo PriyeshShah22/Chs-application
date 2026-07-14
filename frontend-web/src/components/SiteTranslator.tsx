@@ -1,35 +1,140 @@
-import { useEffect, useRef } from "react";
-import { api } from "../api/client";
+import { useLayoutEffect } from "react";
 import { useLanguageStore, words } from "../store/language";
 
 const originals = new WeakMap<Node, string>();
-const translatedValues = new Set(Object.values(words).flatMap((entry) => [entry.hi, entry.mr]));
-const dynamicCache = new Map<string, string>();
-const reverse = new Map<string, string>(Object.entries(words).flatMap(([english, entry]) => [[entry.hi, english], [entry.mr, english]]));
-const cacheKey = (language: string, text: string) => `${language}:${text}`;
+const translatedValues = new Set(
+  Object.values(words).flatMap((entry) => [entry.hi, entry.mr]),
+);
+const reverse = new Map<string, string>(
+  Object.entries(words).flatMap(([english, entry]) => [
+    [entry.hi, english],
+    [entry.mr, english],
+  ]),
+);
+
+function translateText(original: string, language: "en" | "hi" | "mr") {
+  if (language === "en") return original;
+  const exact = words[original]?.[language];
+  if (exact) return exact;
+  let result = original;
+  for (const month of [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ])
+    result = result.replaceAll(month, words[month][language]);
+  const monthly = result.match(/^(\d+) monthly bills · (\d+) paid$/);
+  if (monthly)
+    return language === "hi"
+      ? `${monthly[1]} मासिक बिल · ${monthly[2]} भुगतान किए`
+      : `${monthly[1]} मासिक देयके · ${monthly[2]} भरलेली`;
+  const due = result.match(/^(\d+) due$/);
+  if (due) return language === "hi" ? `${due[1]} बकाया` : `${due[1]} थकीत`;
+  const notices = result.match(
+    /^(\d+) active notices are available\. Important updates are always shown above so they are hard to miss\.$/,
+  );
+  if (notices)
+    return language === "hi"
+      ? `${notices[1]} सक्रिय सूचनाएं उपलब्ध हैं। महत्वपूर्ण सूचना हमेशा ऊपर दिखाई जाती है।`
+      : `${notices[1]} सक्रिय सूचना उपलब्ध आहेत. महत्त्वाची सूचना नेहमी वर दिसते.`;
+  return result;
+}
 
 function applyTranslations(language: "en" | "hi" | "mr") {
-  const root = document.getElementById("root"); if (!root) return [] as string[];
-  const unknown = new Set<string>(); const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let node: Node | null;
+  const root = document.body;
+  if (!root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node: Node | null;
   while ((node = walker.nextNode())) {
-    const current = node.textContent ?? ""; const trimmed = current.trim(); if (!trimmed) continue;
-    if (language === "en" && reverse.has(trimmed)) { const english = reverse.get(trimmed)!; originals.set(node, english); node.textContent = current.replace(trimmed, english); continue; }
-    if (!originals.has(node) || (!translatedValues.has(trimmed) && !dynamicCache.has(cacheKey(language, trimmed)) && !words[trimmed])) originals.set(node, trimmed);
-    const original = originals.get(node) ?? trimmed; const replacement = words[original]?.[language] ?? dynamicCache.get(cacheKey(language, original)) ?? original;
-    if (language !== "en" && replacement === original && shouldTranslate(original)) unknown.add(original);
-    if (trimmed !== replacement) node.textContent = current.replace(trimmed, replacement);
+    const current = node.textContent ?? "";
+    const trimmed = current.trim();
+    if (!trimmed) continue;
+    if (language === "en" && reverse.has(trimmed)) {
+      const english = reverse.get(trimmed)!;
+      originals.set(node, english);
+      node.textContent = current.replace(trimmed, english);
+      continue;
+    }
+    if (!originals.has(node)) {
+      originals.set(node, reverse.get(trimmed) ?? trimmed);
+    } else {
+      const stored = originals.get(node) ?? trimmed;
+      const expected = translateText(stored, language);
+      if (trimmed !== expected && !translatedValues.has(trimmed)) originals.set(node, reverse.get(trimmed) ?? trimmed);
+    }
+    const original = originals.get(node) ?? reverse.get(trimmed) ?? trimmed;
+    const replacement = translateText(original, language);
+    if (trimmed !== replacement)
+      node.textContent = current.replace(trimmed, replacement);
   }
-  root.querySelectorAll<HTMLInputElement>("input[placeholder], textarea[placeholder]").forEach((element) => { const original = reverse.get(element.placeholder) ?? element.dataset.originalPlaceholder ?? element.placeholder; element.dataset.originalPlaceholder = original; element.placeholder = words[original]?.[language] ?? dynamicCache.get(cacheKey(language, original)) ?? original; if (language !== "en" && element.placeholder === original && shouldTranslate(original)) unknown.add(original); });
-  document.documentElement.lang = language === "en" ? "en" : `${language}-IN`; return [...unknown].slice(0, 200);
+  root
+    .querySelectorAll<HTMLInputElement>(
+      "input[placeholder], textarea[placeholder]",
+    )
+    .forEach((element) => {
+      const stored = element.dataset.originalPlaceholder;
+      const original =
+        reverse.get(element.placeholder) ??
+        (stored && element.placeholder === translateText(stored, language)
+          ? stored
+          : element.placeholder);
+      element.dataset.originalPlaceholder = original;
+      const translated = translateText(original, language);
+      if (element.placeholder !== translated) element.placeholder = translated;
+    });
+  root
+    .querySelectorAll<HTMLElement>("[aria-label], [title]")
+    .forEach((element) => {
+      if (element.hasAttribute("aria-label")) {
+        const current = element.getAttribute("aria-label") ?? "";
+        const stored = element.dataset.originalAriaLabel;
+        const original =
+          stored && current === translateText(stored, language)
+            ? stored
+            : current;
+        element.dataset.originalAriaLabel = original;
+        const translated = translateText(original, language);
+        if (current !== translated)
+          element.setAttribute("aria-label", translated);
+      }
+      if (element.hasAttribute("title")) {
+        const current = element.getAttribute("title") ?? "";
+        const stored = element.dataset.originalTitle;
+        const original =
+          stored && current === translateText(stored, language)
+            ? stored
+            : current;
+        element.dataset.originalTitle = original;
+        const translated = translateText(original, language);
+        if (current !== translated) element.setAttribute("title", translated);
+      }
+    });
+  document.documentElement.lang = language === "en" ? "en" : `${language}-IN`;
 }
-function shouldTranslate(text: string) { return text.length >= 3 && text.length <= 500 && !text.includes("@") && !/^[-+#₹\d\s.,:/]+$/.test(text) && !/^[A-Z]{2,8}$/.test(text); }
 
 export function SiteTranslator() {
-  const language = useLanguageStore((state) => state.language); const timer = useRef<number | null>(null); const inFlight = useRef(false);
-  useEffect(() => {
-    let active = true;
-    const run = async () => { const unknown = applyTranslations(language); if (language === "en" || !unknown.length || inFlight.current) return; inFlight.current = true; try { const result = (await api.post("/ai/translate-ui", { language, texts: unknown })).data; unknown.forEach((text, index) => { const translated = result.translations[index] || text; dynamicCache.set(cacheKey(language, text), translated); reverse.set(translated, text); const existing = words[text] ?? { en: text, hi: text, mr: text }; words[text] = { ...existing, [language]: translated }; }); if (active) applyTranslations(language); } catch { /* Known dictionary translations remain available when AI translation is offline. */ } finally { inFlight.current = false; } };
-    void run(); const root = document.getElementById("root"); const observer = new MutationObserver(() => { if (timer.current) clearTimeout(timer.current); timer.current = window.setTimeout(() => void run(), 180); }); if (root) observer.observe(root, { childList: true, subtree: true, characterData: true });
-    return () => { active = false; observer.disconnect(); if (timer.current) clearTimeout(timer.current); };
-  }, [language]); return null;
+  const language = useLanguageStore((state) => state.language);
+  useLayoutEffect(() => {
+    applyTranslations(language);
+    const root = document.body;
+    const observer = new MutationObserver(() => applyTranslations(language));
+    if (root)
+      observer.observe(root, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["aria-label", "title", "placeholder"],
+      });
+    return () => observer.disconnect();
+  }, [language]);
+  return null;
 }

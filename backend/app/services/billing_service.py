@@ -9,6 +9,10 @@ from sqlalchemy.orm import Session
 from app.models.bill import Bill, BillLineItem, BillStatus, Payment
 from app.models.user import User
 
+
+class MonthlyBillingConflict(ValueError):
+    """Raised when a society period has already been published."""
+
 def _next_bill_number(db: Session, society_id: int, year: int) -> str:
     prefix = f"BILL-{society_id}-{year}-"
     last = db.execute(select(Bill).where(Bill.bill_number.like(f"{prefix}%")).order_by(Bill.id.desc()).limit(1)).scalars().first()
@@ -49,25 +53,31 @@ def create_user_bill(db: Session, *, society_id: int, billed_user: User, billing
 def create_society_monthly_bills(db: Session, *, society_id: int, billing_year: int,
                                  billing_month: int, due_date: date,
                                  maintenance_amount: float) -> tuple[int, int]:
+    if billing_month < 1 or billing_month > 12:
+        raise ValueError("Invalid billing month")
+    if maintenance_amount <= 0:
+        raise ValueError("Maintenance amount must be greater than zero")
+    existing = db.execute(select(Bill.id).where(
+        Bill.society_id == society_id,
+        Bill.billing_year == billing_year,
+        Bill.billing_month == billing_month,
+    ).limit(1)).scalar_one_or_none()
+    if existing:
+        period = date(billing_year, billing_month, 1).strftime("%B %Y")
+        raise MonthlyBillingConflict(f"Maintenance for {period} has already been published")
     residents = db.execute(select(User).where(User.society_id == society_id)).scalars().all()
     eligible = [user for user in residents if "resident" in user.role_names and user.resident]
-    created = skipped = 0
+    if not eligible:
+        raise ValueError("No approved residents with linked flats are available to bill")
+    created = 0
     for user in eligible:
-        exists = db.execute(select(Bill.id).where(
-            Bill.billed_user_id == user.id,
-            Bill.billing_year == billing_year,
-            Bill.billing_month == billing_month,
-        )).scalar_one_or_none()
-        if exists:
-            skipped += 1
-            continue
         create_user_bill(db, society_id=society_id, billed_user=user,
                          billing_year=billing_year, billing_month=billing_month,
                          due_date=due_date, maintenance_amount=maintenance_amount,
                          commit=False)
         created += 1
     db.commit()
-    return created, skipped
+    return created, 0
 
 
 def apply_late_fees_and_overdue(db: Session, society_id: int | None = None) -> int:

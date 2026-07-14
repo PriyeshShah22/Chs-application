@@ -63,11 +63,11 @@ The admin workspace summarizes billed maintenance, collected money, active resid
 
 ### English, Hindi, and Marathi
 
-The language control is always visible at the top of the signed-in application. Navigation, known product language, inputs, helper text, and newly encountered UI text can switch between English, Hindi, and Marathi. Unknown visible UI phrases are translated in a permission-protected batch and cached for the current session. Names, emails, IDs, dates, currency values, and numbers remain unchanged.
+The language control is always visible at the top of the signed-in application. Navigation, dialogs, menus, inputs, helper text, accessibility labels, and bundled notice copy switch between English, Hindi, and Marathi from a reviewed translation catalog included with the web app. Switching is instantaneous, works offline, and makes no AI or translation API request. Names, emails, IDs, currency values, and numbers remain unchanged.
 
 ![Hindi home interface](docs/screenshots/hindi-home.png)
 
-The selected language is remembered on the device and also controls the assistant's reply and read-aloud language.
+The selected interface language is remembered on the device. It does not control the assistant: typed messages are detected locally, while Sarvam detects the source language of voice requests. The agent replies in the language used for that request, and read-aloud uses the detected response locale.
 
 ## Main modules
 
@@ -210,7 +210,6 @@ POST /api/v1/ai/chat
 POST /api/v1/ai/voice
 POST /api/v1/ai/actions/{id}/confirm
 POST /api/v1/ai/actions/{id}/cancel
-POST /api/v1/ai/translate-ui
 ```
 
 ### Membership and complaints

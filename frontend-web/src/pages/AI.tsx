@@ -1,39 +1,745 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Box, Button, Chip, CircularProgress, Divider, IconButton, Paper, Stack, TextField, Typography } from "@mui/material";
-import { AutoAwesomeRounded, CancelOutlined, CheckCircleRounded, HearingRounded, MicRounded, PaymentsRounded, SendRounded, StopCircleRounded, VolumeUpRounded } from "@mui/icons-material";
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Divider,
+  IconButton,
+  Paper,
+  Stack,
+  TextField,
+  Typography,
+} from "@mui/material";
+import {
+  AutoAwesomeRounded,
+  CancelOutlined,
+  CheckCircleRounded,
+  HearingRounded,
+  MicRounded,
+  PaymentsRounded,
+  SendRounded,
+  StopCircleRounded,
+  VolumeUpRounded,
+} from "@mui/icons-material";
 import { enqueueSnackbar } from "notistack";
 import { api } from "../api/client";
-import { useI18n, useLanguageStore } from "../store/language";
+import { useI18n } from "../store/language";
 
-interface Proposal { id: number; action_type: string; risk: string; status: string; summary: string; fields: Record<string, any>; expires_at: string }
-interface Message { role: "user" | "assistant"; content: string; action?: Proposal }
-interface MemoryMessage { role: "user" | "assistant"; content: string }
-const plainSpeech = (text: string) => text.replace(/```[\s\S]*?```/g, " ").replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1").replace(/^\s{0,3}#{1,6}\s*/gm, "").replace(/\*\*|__|`/g, "").replace(/^\s*[-*•]\s+/gm, "").replace(/[\*_]/g, " ").replace(/[ \t]+/g, " ").trim();
-function recordingFormat() { return [{ mimeType: "audio/webm;codecs=opus", extension: "webm" }, { mimeType: "audio/webm", extension: "webm" }, { mimeType: "audio/mp4", extension: "m4a" }, { mimeType: "audio/ogg;codecs=opus", extension: "ogg" }].find(({ mimeType }) => MediaRecorder.isTypeSupported(mimeType)); }
+interface Proposal {
+  id: number;
+  action_type: string;
+  risk: string;
+  status: string;
+  summary: string;
+  fields: Record<string, unknown>;
+  expires_at: string;
+}
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+  action?: Proposal;
+  language?: string;
+}
+interface MemoryMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+const plainSpeech = (text: string) =>
+  text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s*/gm, "")
+    .replace(/\*\*|__|`/g, "")
+    .replace(/^\s*[-*•]\s+/gm, "")
+    .replace(/[\*_]/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+function recordingFormat() {
+  return [
+    { mimeType: "audio/webm;codecs=opus", extension: "webm" },
+    { mimeType: "audio/webm", extension: "webm" },
+    { mimeType: "audio/mp4", extension: "m4a" },
+    { mimeType: "audio/ogg;codecs=opus", extension: "ogg" },
+  ].find(({ mimeType }) => MediaRecorder.isTypeSupported(mimeType));
+}
 
 export default function AI() {
-  const appLanguage = useLanguageStore((state) => state.language); const language = ({ en: "en-IN", hi: "hi-IN", mr: "mr-IN" } as const)[appLanguage]; const { t } = useI18n();
-  const greeting = appLanguage === "hi" ? "नमस्ते। बताइए, आज मैं आपके लिए क्या करूँ?" : appLanguage === "mr" ? "नमस्कार. आज मी तुमच्यासाठी काय करू?" : "Namaste. What can I do for you today?";
-  const [messages, setMessages] = useState<Message[]>([{ role: "assistant", content: greeting }]); const [input, setInput] = useState(""); const [busy, setBusy] = useState(false); const [recording, setRecording] = useState(false); const [seconds, setSeconds] = useState(0); const [voiceError, setVoiceError] = useState<string | null>(null); const [memoryMessages, setMemoryMessages] = useState<MemoryMessage[]>([]); const [conversationSummary, setConversationSummary] = useState(""); const [speakingText, setSpeakingText] = useState<string | null>(null);
-  const endRef = useRef<HTMLDivElement>(null); const recorderRef = useRef<MediaRecorder | null>(null); const streamRef = useRef<MediaStream | null>(null); const chunksRef = useRef<Blob[]>([]); const timerRef = useRef<number | null>(null); const canvasRef = useRef<HTMLCanvasElement | null>(null); const audioContextRef = useRef<AudioContext | null>(null); const animationRef = useRef<number | null>(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
-  useEffect(() => () => { streamRef.current?.getTracks().forEach((track) => track.stop()); if (timerRef.current) clearInterval(timerRef.current); window.speechSynthesis?.cancel(); if (animationRef.current) cancelAnimationFrame(animationRef.current); void audioContextRef.current?.close(); }, []);
-  function stopSpeaking() { window.speechSynthesis?.cancel(); setSpeakingText(null); }
-  function speak(text: string) { if (!("speechSynthesis" in window)) return setVoiceError("Read aloud is unavailable in this browser."); stopSpeaking(); const utterance = new SpeechSynthesisUtterance(plainSpeech(text)); utterance.lang = language; utterance.onstart = () => setSpeakingText(text); utterance.onend = () => setSpeakingText(null); utterance.onerror = () => setSpeakingText(null); speechSynthesis.speak(utterance); }
-  function appendResult(data: any, translated?: string) { const reply = plainSpeech(data.reply || ""); setMemoryMessages(data.memory_messages || []); setConversationSummary(data.conversation_summary || ""); setMessages((current) => [...current, ...(translated ? [{ role: "user" as const, content: translated }] : []), { role: "assistant", content: reply, action: data.action }]); speak(reply); }
-  async function send(text = input) { if (!text.trim() || busy) return; stopSpeaking(); setMessages((current) => [...current, { role: "user", content: text.trim() }]); setInput(""); setBusy(true); try { appendResult((await api.post("/ai/chat", { message: text.trim(), language, history: memoryMessages, conversation_summary: conversationSummary || null })).data); } catch (error: any) { setMessages((current) => [...current, { role: "assistant", content: error?.response?.data?.detail || "The assistant could not be reached." }]); } finally { setBusy(false); } }
-  async function sendVoice(blob: Blob, extension: string) { setBusy(true); try { const form = new FormData(); form.append("audio", blob, `request.${extension}`); form.append("language", language); form.append("history", JSON.stringify(memoryMessages)); form.append("conversation_summary", conversationSummary); const data = (await api.post("/ai/voice", form, { timeout: 45_000 })).data; appendResult(data, data.input_transcript); } catch (error: any) { setVoiceError(error?.response?.data?.detail || "The recording could not be understood. Try again or type instead."); } finally { setBusy(false); } }
-  function startWaveform(stream: MediaStream) { const context = new AudioContext(); const analyser = context.createAnalyser(); analyser.fftSize = 128; context.createMediaStreamSource(stream).connect(analyser); audioContextRef.current = context; const values = new Uint8Array(analyser.frequencyBinCount); const draw = () => { const canvas = canvasRef.current; const ctx = canvas?.getContext("2d"); if (canvas && ctx) { const width = canvas.clientWidth * devicePixelRatio, height = canvas.clientHeight * devicePixelRatio; canvas.width = width; canvas.height = height; analyser.getByteFrequencyData(values); ctx.clearRect(0, 0, width, height); values.forEach((value, index) => { const bar = Math.max(4, value / 255 * height); ctx.fillStyle = "#F4B860"; ctx.fillRect(index * width / values.length, (height - bar) / 2, Math.max(2, width / values.length - 2), bar); }); } animationRef.current = requestAnimationFrame(draw); }; draw(); }
-  function stopWaveform() { if (animationRef.current) cancelAnimationFrame(animationRef.current); animationRef.current = null; void audioContextRef.current?.close(); audioContextRef.current = null; }
-  async function startRecording() { stopSpeaking(); setVoiceError(null); try { const stream = await navigator.mediaDevices.getUserMedia({ audio: { autoGainControl: true, channelCount: 1 } }); streamRef.current = stream; chunksRef.current = []; setRecording(true); startWaveform(stream); const format = recordingFormat(); const recorder = new MediaRecorder(stream, format ? { mimeType: format.mimeType } : undefined); recorderRef.current = recorder; recorder.ondataavailable = (event) => event.data.size && chunksRef.current.push(event.data); recorder.onstop = () => { const mime = recorder.mimeType || format?.mimeType || "audio/webm"; const blob = new Blob(chunksRef.current, { type: mime }); stream.getTracks().forEach((track) => track.stop()); if (blob.size < 1000) return setVoiceError("Almost no microphone audio was captured."); void sendVoice(blob, format?.extension || "webm"); }; recorder.start(); setSeconds(0); timerRef.current = window.setInterval(() => setSeconds((value) => value + 1), 1000); } catch { setVoiceError("Allow microphone access, or type your request below."); } }
-  function stopRecording() { if (timerRef.current) clearInterval(timerRef.current); timerRef.current = null; stopWaveform(); if (recorderRef.current?.state !== "inactive") recorderRef.current?.stop(); setRecording(false); }
-  async function decide(action: Proposal, decision: "confirm" | "cancel") { stopSpeaking(); setBusy(true); try { const data = (await api.post(`/ai/actions/${action.id}/${decision}`)).data; setMessages((current) => [...current, { role: "assistant", content: data.message }]); speak(data.message); } catch (error: any) { enqueueSnackbar(error?.response?.data?.detail || "That action could not be completed", { variant: "error" }); } finally { setBusy(false); } }
-  return <Stack spacing={2.5} sx={{ maxWidth: 980, mx: "auto" }}><Box textAlign="center"><Chip icon={<AutoAwesomeRounded />} label="Sarvam + OpenAI agent" color="success" size="small" /><Typography variant="h2" sx={{ mt: 1.5, fontSize: { xs: "2.4rem", md: "4rem" } }}>{t("Ask Panchayat")}</Typography><Typography color="text.secondary" sx={{ mt: 1 }}>{t("Speak or type. Panchayat can check records and complete approved tasks for you.")}</Typography></Box><Paper sx={{ minHeight: { xs: 620, md: 700 }, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 22px 70px rgba(23,63,53,.12)" }}><Stack direction="row" alignItems="center" spacing={1.5} sx={{ p: 2, bgcolor: "#173F35", color: "white" }}><Box sx={{ width: 46, height: 46, borderRadius: 2, bgcolor: "rgba(255,255,255,.12)", display: "grid", placeItems: "center" }}><HearingRounded /></Box><Box><Typography fontWeight={900}>Panchayat Agent</Typography><Typography variant="caption" sx={{ opacity: .7 }}>Can read records and complete confirmed tasks</Typography></Box><Box sx={{ ml: "auto", width: 9, height: 9, bgcolor: "#7EE2B8", borderRadius: "50%" }} /></Stack><Stack spacing={2} sx={{ p: { xs: 2, md: 3 }, flex: 1, overflowY: "auto", maxHeight: 540 }} aria-live="polite">{messages.map((message, index) => <Box key={index} sx={{ alignSelf: message.role === "user" ? "flex-end" : "flex-start", maxWidth: { xs: "92%", md: "78%" } }}><Paper elevation={0} sx={{ p: 2, border: 0, bgcolor: message.role === "user" ? "primary.main" : "action.hover", color: message.role === "user" ? "primary.contrastText" : "text.primary", borderRadius: message.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px" }}><Typography sx={{ whiteSpace: "pre-wrap" }}>{message.content}</Typography>{message.role === "assistant" && <IconButton size="small" onClick={() => speakingText === message.content ? stopSpeaking() : speak(message.content)} aria-label="Read response aloud" sx={{ mt: .5 }}>{speakingText === message.content ? <StopCircleRounded /> : <VolumeUpRounded />}</IconButton>}</Paper>{message.action && <ActionCard action={message.action} busy={busy} decide={decide} onPaid={async () => { setMessages((current) => [...current, { role: "assistant", content: "Payment complete. Your maintenance account is now clear." }]); }} />}</Box>)}{busy && <Stack direction="row" spacing={1} alignItems="center"><CircularProgress size={20} /><Typography color="text.secondary">Working on your request…</Typography></Stack>}<div ref={endRef} /></Stack><Box sx={{ p: 2, borderTop: 1, borderColor: "divider", bgcolor: "background.default" }}>{voiceError && <Alert severity="warning" onClose={() => setVoiceError(null)} sx={{ mb: 1.5 }}>{voiceError}</Alert>}<Stack direction="row" spacing={1} alignItems="center"><IconButton onClick={recording ? stopRecording : startRecording} disabled={busy} aria-label={recording ? "Stop recording" : "Start voice request"} sx={{ width: 54, height: 54, bgcolor: recording ? "error.main" : "primary.main", color: "white", "&:hover": { bgcolor: recording ? "error.dark" : "primary.dark" } }}>{recording ? <StopCircleRounded /> : <MicRounded />}</IconButton>{recording ? <Paper variant="outlined" sx={{ flex: 1, height: 56, px: 2, display: "flex", alignItems: "center" }}><canvas ref={canvasRef} style={{ width: "100%", height: 38 }} /><Typography color="error" fontWeight={900}>{seconds}s</Typography></Paper> : <TextField fullWidth multiline maxRows={3} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder={appLanguage === "hi" ? "अपना काम बताइए…" : appLanguage === "mr" ? "तुमचे काम सांगा…" : "Tell Panchayat what you need…"} inputProps={{ "aria-label": "Message to Panchayat Assistant" }} />}<IconButton aria-label="Send message" color="primary" disabled={!input.trim() || busy || recording} onClick={() => void send()}><SendRounded /></IconButton></Stack>{recording && <Typography variant="caption" color="text.secondary">Moving bars mean your voice is being heard. Tap stop when finished.</Typography>}</Box></Paper></Stack>;
+  const { t } = useI18n();
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: "assistant",
+      content: "Namaste. What can I do for you today?",
+      language: "en-IN",
+    },
+  ]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [memoryMessages, setMemoryMessages] = useState<MemoryMessage[]>([]);
+  const [conversationSummary, setConversationSummary] = useState("");
+  const [speakingText, setSpeakingText] = useState<string | null>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<number | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animationRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, busy]);
+  useEffect(
+    () => () => {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (timerRef.current) clearInterval(timerRef.current);
+      window.speechSynthesis?.cancel();
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      void audioContextRef.current?.close();
+    },
+    [],
+  );
+
+  function stopSpeaking() {
+    window.speechSynthesis?.cancel();
+    setSpeakingText(null);
+  }
+  function speak(text: string, language = "en-IN") {
+    if (!("speechSynthesis" in window))
+      return setVoiceError("Read aloud is unavailable in this browser.");
+    stopSpeaking();
+    const utterance = new SpeechSynthesisUtterance(plainSpeech(text));
+    utterance.lang = language;
+    utterance.onstart = () => setSpeakingText(text);
+    utterance.onend = () => setSpeakingText(null);
+    utterance.onerror = () => setSpeakingText(null);
+    speechSynthesis.speak(utterance);
+  }
+  function appendResult(
+    data: {
+      reply?: string;
+      detected_language?: string;
+      memory_messages?: MemoryMessage[];
+      conversation_summary?: string;
+      action?: Proposal;
+    },
+    translated?: string,
+  ) {
+    const reply = plainSpeech(data.reply || "");
+    const responseLanguage = data.detected_language || "en-IN";
+    setMemoryMessages(data.memory_messages || []);
+    setConversationSummary(data.conversation_summary || "");
+    setMessages((current) => [
+      ...current,
+      ...(translated ? [{ role: "user" as const, content: translated }] : []),
+      {
+        role: "assistant",
+        content: reply,
+        action: data.action,
+        language: responseLanguage,
+      },
+    ]);
+    speak(reply, responseLanguage);
+  }
+  async function send(text = input) {
+    if (!text.trim() || busy) return;
+    stopSpeaking();
+    setMessages((current) => [
+      ...current,
+      { role: "user", content: text.trim() },
+    ]);
+    setInput("");
+    setBusy(true);
+    try {
+      appendResult(
+        (
+          await api.post("/ai/chat", {
+            message: text.trim(),
+            language: "auto",
+            history: memoryMessages,
+            conversation_summary: conversationSummary || null,
+          })
+        ).data,
+      );
+    } catch (error: any) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          content:
+            error?.response?.data?.detail ||
+            "The assistant could not be reached.",
+        },
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function sendVoice(blob: Blob, extension: string) {
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.append("audio", blob, `request.${extension}`);
+      form.append("language", "unknown");
+      form.append("history", JSON.stringify(memoryMessages));
+      form.append("conversation_summary", conversationSummary);
+      const data = (await api.post("/ai/voice", form, { timeout: 45_000 }))
+        .data;
+      appendResult(data, data.input_transcript);
+    } catch (error: any) {
+      setVoiceError(
+        error?.response?.data?.detail ||
+          "The recording could not be understood. Try again or type instead.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  function startWaveform(stream: MediaStream) {
+    const context = new AudioContext();
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.82;
+    context.createMediaStreamSource(stream).connect(analyser);
+    audioContextRef.current = context;
+    const values = new Uint8Array(analyser.fftSize);
+    const draw = () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (canvas && ctx) {
+        const width = canvas.clientWidth * devicePixelRatio;
+        const height = canvas.clientHeight * devicePixelRatio;
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+        }
+        analyser.getByteTimeDomainData(values);
+        ctx.clearRect(0, 0, width, height);
+        const gradient = ctx.createLinearGradient(0, 0, width, 0);
+        gradient.addColorStop(0, "#7EE2B8");
+        gradient.addColorStop(0.5, "#F4B860");
+        gradient.addColorStop(1, "#7EE2B8");
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = Math.max(2, 2.5 * devicePixelRatio);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        values.forEach((value, index) => {
+          const x = (index / (values.length - 1)) * width;
+          const y = height / 2 + ((value - 128) / 128) * height * 0.42;
+          if (index === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      }
+      animationRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+  }
+  function stopWaveform() {
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    animationRef.current = null;
+    void audioContextRef.current?.close();
+    audioContextRef.current = null;
+  }
+  async function startRecording() {
+    stopSpeaking();
+    setVoiceError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { autoGainControl: true, channelCount: 1 },
+      });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      setRecording(true);
+      startWaveform(stream);
+      const format = recordingFormat();
+      const recorder = new MediaRecorder(
+        stream,
+        format ? { mimeType: format.mimeType } : undefined,
+      );
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) =>
+        event.data.size && chunksRef.current.push(event.data);
+      recorder.onstop = () => {
+        const mime = recorder.mimeType || format?.mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type: mime });
+        stream.getTracks().forEach((track) => track.stop());
+        if (blob.size < 1000)
+          return setVoiceError("Almost no microphone audio was captured.");
+        void sendVoice(blob, format?.extension || "webm");
+      };
+      recorder.start();
+      setSeconds(0);
+      timerRef.current = window.setInterval(
+        () => setSeconds((value) => value + 1),
+        1000,
+      );
+    } catch {
+      setVoiceError("Allow microphone access, or type your request below.");
+    }
+  }
+  function stopRecording() {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+    stopWaveform();
+    if (recorderRef.current?.state !== "inactive") recorderRef.current?.stop();
+    setRecording(false);
+  }
+  async function decide(action: Proposal, decision: "confirm" | "cancel") {
+    stopSpeaking();
+    setBusy(true);
+    try {
+      const data = (await api.post(`/ai/actions/${action.id}/${decision}`))
+        .data;
+      setMessages((current) => [
+        ...current,
+        { role: "assistant", content: data.message },
+      ]);
+      speak(data.message);
+    } catch (error: any) {
+      enqueueSnackbar(
+        error?.response?.data?.detail || "That action could not be completed",
+        { variant: "error" },
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Stack spacing={2.5} sx={{ maxWidth: 980, mx: "auto" }}>
+      <Box textAlign="center">
+        <Chip
+          icon={<AutoAwesomeRounded />}
+          label="Sarvam + OpenAI agent"
+          color="success"
+          size="small"
+        />
+        <Typography
+          variant="h2"
+          sx={{ mt: 1.5, fontSize: { xs: "2.4rem", md: "4rem" } }}
+        >
+          {t("Ask Panchayat")}
+        </Typography>
+        <Typography color="text.secondary" sx={{ mt: 1 }}>
+          {t(
+            "Speak or type. Panchayat can check records and complete approved tasks for you.",
+          )}
+        </Typography>
+      </Box>
+      <Paper
+        sx={{
+          minHeight: { xs: 620, md: 700 },
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          boxShadow: "0 22px 70px rgba(23,63,53,.12)",
+        }}
+      >
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1.5}
+          sx={{ p: 2, bgcolor: "#173F35", color: "white" }}
+        >
+          <Box
+            sx={{
+              width: 46,
+              height: 46,
+              borderRadius: 2,
+              bgcolor: "rgba(255,255,255,.12)",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <HearingRounded />
+          </Box>
+          <Box>
+            <Typography fontWeight={900}>Panchayat Agent</Typography>
+            <Typography variant="caption" sx={{ opacity: 0.7 }}>
+              Can read records and complete confirmed tasks
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              ml: "auto",
+              width: 9,
+              height: 9,
+              bgcolor: "#7EE2B8",
+              borderRadius: "50%",
+            }}
+          />
+        </Stack>
+        <Stack
+          spacing={2}
+          sx={{
+            p: { xs: 2, md: 3 },
+            flex: 1,
+            overflowY: "auto",
+            maxHeight: 540,
+          }}
+          aria-live="polite"
+        >
+          {messages.map((message, index) => (
+            <Box
+              key={`${message.role}-${index}`}
+              sx={{
+                alignSelf: message.role === "user" ? "flex-end" : "flex-start",
+                maxWidth: { xs: "92%", md: "78%" },
+              }}
+            >
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2,
+                  border: 0,
+                  bgcolor:
+                    message.role === "user" ? "primary.main" : "action.hover",
+                  color:
+                    message.role === "user"
+                      ? "primary.contrastText"
+                      : "text.primary",
+                  borderRadius:
+                    message.role === "user"
+                      ? "16px 16px 4px 16px"
+                      : "16px 16px 16px 4px",
+                }}
+              >
+                <Typography sx={{ whiteSpace: "pre-wrap" }}>
+                  {message.content}
+                </Typography>
+                {message.role === "assistant" && (
+                  <IconButton
+                    size="small"
+                    onClick={() =>
+                      speakingText === message.content
+                        ? stopSpeaking()
+                        : speak(message.content, message.language)
+                    }
+                    aria-label="Read response aloud"
+                    sx={{ mt: 0.5 }}
+                  >
+                    {speakingText === message.content ? (
+                      <StopCircleRounded />
+                    ) : (
+                      <VolumeUpRounded />
+                    )}
+                  </IconButton>
+                )}
+              </Paper>
+              {message.action && (
+                <ActionCard
+                  action={message.action}
+                  busy={busy}
+                  decide={decide}
+                  onPaid={async () =>
+                    setMessages((current) => [
+                      ...current,
+                      {
+                        role: "assistant",
+                        content:
+                          "Payment complete. Your maintenance account is now clear.",
+                      },
+                    ])
+                  }
+                />
+              )}
+            </Box>
+          ))}
+          {busy && (
+            <Stack direction="row" spacing={1} alignItems="center">
+              <CircularProgress size={20} />
+              <Typography color="text.secondary">
+                Working on your request…
+              </Typography>
+            </Stack>
+          )}
+          <div ref={endRef} />
+        </Stack>
+        <Box
+          sx={{
+            p: 2,
+            borderTop: 1,
+            borderColor: "divider",
+            bgcolor: "background.default",
+          }}
+        >
+          {voiceError && (
+            <Alert
+              severity="warning"
+              onClose={() => setVoiceError(null)}
+              sx={{ mb: 1.5 }}
+            >
+              {voiceError}
+            </Alert>
+          )}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <IconButton
+              onClick={recording ? stopRecording : startRecording}
+              disabled={busy}
+              aria-label={recording ? "Stop recording" : "Start voice request"}
+              sx={{
+                width: 54,
+                height: 54,
+                bgcolor: recording ? "error.main" : "primary.main",
+                color: "white",
+                "&:hover": {
+                  bgcolor: recording ? "error.dark" : "primary.dark",
+                },
+              }}
+            >
+              {recording ? <StopCircleRounded /> : <MicRounded />}
+            </IconButton>
+            {recording ? (
+              <Paper
+                elevation={0}
+                sx={{
+                  flex: 1,
+                  height: 68,
+                  px: 2,
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr auto",
+                  gap: 1.5,
+                  alignItems: "center",
+                  overflow: "hidden",
+                  color: "white",
+                  background: "linear-gradient(135deg,#173F35,#225E4E)",
+                  border: "1px solid rgba(126,226,184,.28)",
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    bgcolor: "#7EE2B8",
+                    boxShadow: "0 0 0 7px rgba(126,226,184,.12)",
+                  }}
+                />
+                <Box sx={{ minWidth: 0 }}>
+                  <Stack direction="row" justifyContent="space-between">
+                    <Typography variant="caption" fontWeight={900}>
+                      {t("Listening")}
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.72 }}>
+                      {t("Tap when finished")}
+                    </Typography>
+                  </Stack>
+                  <canvas
+                    ref={canvasRef}
+                    style={{ display: "block", width: "100%", height: 34 }}
+                  />
+                </Box>
+                <Chip
+                  label={`${seconds}s`}
+                  size="small"
+                  sx={{
+                    bgcolor: "rgba(255,255,255,.12)",
+                    color: "white",
+                    fontWeight: 900,
+                  }}
+                />
+              </Paper>
+            ) : (
+              <TextField
+                fullWidth
+                multiline
+                maxRows={3}
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void send();
+                  }
+                }}
+                placeholder={t("Tell Panchayat what you need…")}
+                inputProps={{ "aria-label": "Message to Panchayat Assistant" }}
+              />
+            )}
+            <IconButton
+              aria-label="Send message"
+              color="primary"
+              disabled={!input.trim() || busy || recording}
+              onClick={() => void send()}
+            >
+              <SendRounded />
+            </IconButton>
+          </Stack>
+          {recording && (
+            <Typography variant="caption" color="text.secondary">
+              Moving bars mean your voice is being heard. Tap stop when
+              finished.
+            </Typography>
+          )}
+        </Box>
+      </Paper>
+    </Stack>
+  );
 }
 
-function ActionCard({ action, busy, decide, onPaid }: { action: Proposal; busy: boolean; decide: (action: Proposal, decision: "confirm" | "cancel") => Promise<void>; onPaid: () => Promise<void> }) {
-  const payment = action.action_type === "pay_outstanding_dues"; const [paying, setPaying] = useState(false);
-  async function payNow() { setPaying(true); try { await api.post(`/ai/actions/${action.id}/confirm`); if (action.fields.demo) { const result = (await api.post("/bills/payments/demo")).data; enqueueSnackbar(`Demo payment of ₹${result.amount.toLocaleString("en-IN")} completed`, { variant: "success" }); await onPaid(); } else { const order = (await api.post("/bills/payment-order")).data; await loadRazorpay(); await new Promise((resolve, reject) => { const checkout = new (window as any).Razorpay({ key: order.key_id, amount: order.amount_paise, currency: "INR", name: "Panchayat", description: "Combined maintenance dues", order_id: order.order_id, handler: async (response: any) => resolve((await api.post("/bills/payments/verify", response)).data), modal: { ondismiss: () => reject(new Error("Payment cancelled")) } }); checkout.open(); }); } } catch (error: any) { enqueueSnackbar(error?.response?.data?.detail || error?.message || "Payment failed", { variant: "error" }); } finally { setPaying(false); } }
-  return <Paper sx={{ mt: 1.5, p: 2.5, borderLeft: 5, borderColor: payment ? "success.main" : action.risk === "high" ? "error.main" : "secondary.main" }}><Stack direction="row" justifyContent="space-between"><Typography variant="overline" fontWeight={900}>{payment ? "COMBINED CHECKOUT" : "ACTION TO REVIEW"}</Typography><Chip size="small" label={payment && action.fields.demo ? "Demo mode" : `${action.risk} risk`} color={payment ? "success" : "warning"} /></Stack><Typography variant="h6">{action.summary}</Typography><Divider sx={{ my: 1.5 }} />{Object.entries(action.fields).filter(([key]) => !["bill_ids", "society_id"].includes(key)).map(([key, value]) => <Stack key={key} direction="row" justifyContent="space-between" spacing={2} sx={{ py: .5 }}><Typography variant="body2" color="text.secondary" sx={{ textTransform: "capitalize" }}>{key.replaceAll("_", " ")}</Typography><Typography variant="body2" fontWeight={850}>{Array.isArray(value) ? value.join(", ") : typeof value === "boolean" ? (value ? "Yes" : "No") : String(value)}</Typography></Stack>)}{payment && action.fields.demo && <Alert severity="warning" sx={{ mt: 1.5 }}>Simulation only. No real money or bank account is used.</Alert>}<Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 2 }}>{payment ? <Button variant="contained" color="success" startIcon={<PaymentsRounded />} disabled={paying || busy} onClick={payNow}>Pay ₹{Number(action.fields.amount).toLocaleString("en-IN")} now</Button> : <Button variant="contained" startIcon={<CheckCircleRounded />} disabled={busy} onClick={() => void decide(action, "confirm")}>Confirm action</Button>}<Button variant="outlined" color="inherit" startIcon={<CancelOutlined />} disabled={busy || paying} onClick={() => void decide(action, "cancel")}>Cancel</Button></Stack></Paper>;
+function ActionCard({
+  action,
+  busy,
+  decide,
+  onPaid,
+}: {
+  action: Proposal;
+  busy: boolean;
+  decide: (action: Proposal, decision: "confirm" | "cancel") => Promise<void>;
+  onPaid: () => Promise<void>;
+}) {
+  const payment = action.action_type === "pay_outstanding_dues";
+  const [paying, setPaying] = useState(false);
+  async function payNow() {
+    setPaying(true);
+    try {
+      await api.post(`/ai/actions/${action.id}/confirm`);
+      if (action.fields.demo) {
+        const result = (await api.post("/bills/payments/demo")).data;
+        enqueueSnackbar(
+          `Demo payment of ₹${result.amount.toLocaleString("en-IN")} completed`,
+          { variant: "success" },
+        );
+        await onPaid();
+      } else {
+        const order = (await api.post("/bills/payment-order")).data;
+        await loadRazorpay();
+        await new Promise((resolve, reject) => {
+          const checkout = new (window as any).Razorpay({
+            key: order.key_id,
+            amount: order.amount_paise,
+            currency: "INR",
+            name: "Panchayat",
+            description: "Combined maintenance dues",
+            order_id: order.order_id,
+            handler: async (response: any) =>
+              resolve(
+                (await api.post("/bills/payments/verify", response)).data,
+              ),
+            modal: { ondismiss: () => reject(new Error("Payment cancelled")) },
+          });
+          checkout.open();
+        });
+      }
+    } catch (error: any) {
+      enqueueSnackbar(
+        error?.response?.data?.detail || error?.message || "Payment failed",
+        { variant: "error" },
+      );
+    } finally {
+      setPaying(false);
+    }
+  }
+  return (
+    <Paper
+      sx={{
+        mt: 1.5,
+        p: 2.5,
+        borderLeft: 5,
+        borderColor: payment
+          ? "success.main"
+          : action.risk === "high"
+            ? "error.main"
+            : "secondary.main",
+      }}
+    >
+      <Stack direction="row" justifyContent="space-between">
+        <Typography variant="overline" fontWeight={900}>
+          {payment ? "COMBINED CHECKOUT" : "ACTION TO REVIEW"}
+        </Typography>
+        <Chip
+          size="small"
+          label={
+            payment && action.fields.demo ? "Demo mode" : `${action.risk} risk`
+          }
+          color={payment ? "success" : "warning"}
+        />
+      </Stack>
+      <Typography variant="h6">{action.summary}</Typography>
+      <Divider sx={{ my: 1.5 }} />
+      {Object.entries(action.fields)
+        .filter(([key]) => !["bill_ids", "society_id"].includes(key))
+        .map(([key, value]) => (
+          <Stack
+            key={key}
+            direction="row"
+            justifyContent="space-between"
+            spacing={2}
+            sx={{ py: 0.5 }}
+          >
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ textTransform: "capitalize" }}
+            >
+              {key.replaceAll("_", " ")}
+            </Typography>
+            <Typography variant="body2" fontWeight={850}>
+              {Array.isArray(value)
+                ? value.join(", ")
+                : typeof value === "boolean"
+                  ? value
+                    ? "Yes"
+                    : "No"
+                  : String(value)}
+            </Typography>
+          </Stack>
+        ))}
+      {payment && Boolean(action.fields.demo) && (
+        <Alert severity="warning" sx={{ mt: 1.5 }}>
+          Simulation only. No real money or bank account is used.
+        </Alert>
+      )}
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 2 }}>
+        {payment ? (
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<PaymentsRounded />}
+            disabled={paying || busy}
+            onClick={payNow}
+          >
+            Pay ₹{Number(action.fields.amount).toLocaleString("en-IN")} now
+          </Button>
+        ) : (
+          <Button
+            variant="contained"
+            startIcon={<CheckCircleRounded />}
+            disabled={busy}
+            onClick={() => void decide(action, "confirm")}
+          >
+            Confirm action
+          </Button>
+        )}
+        <Button
+          variant="outlined"
+          color="inherit"
+          startIcon={<CancelOutlined />}
+          disabled={busy || paying}
+          onClick={() => void decide(action, "cancel")}
+        >
+          Cancel
+        </Button>
+      </Stack>
+    </Paper>
+  );
 }
-async function loadRazorpay() { if ((window as any).Razorpay) return; await new Promise<void>((resolve, reject) => { const script = document.createElement("script"); script.src = "https://checkout.razorpay.com/v1/checkout.js"; script.onload = () => resolve(); script.onerror = () => reject(new Error("Razorpay checkout could not load")); document.body.appendChild(script); }); }
+
+async function loadRazorpay() {
+  if ((window as any).Razorpay) return;
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve();
+    script.onerror = () =>
+      reject(new Error("Razorpay checkout could not load"));
+    document.body.appendChild(script);
+  });
+}

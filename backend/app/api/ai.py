@@ -1,6 +1,5 @@
 """AI assistant endpoint."""
 import json
-from openai import OpenAI
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from openai import APIConnectionError, APIStatusError, RateLimitError
 from sqlalchemy.orm import Session
@@ -11,36 +10,8 @@ from app.models.user import User
 from app.schemas.chat import ActionResult, ChatRequest, ChatResponse
 from app.services.ai_service import cancel_action, chat as ai_chat, confirm_action
 from app.services.sarvam_service import SarvamUnavailable, translate_audio
-from app.core.config import settings
 
 router = APIRouter(prefix="/ai", tags=["ai"])
-
-
-@router.post("/translate-ui")
-def translate_ui(payload: dict, current: User = Depends(get_current_user)) -> dict:
-    language = str(payload.get("language", "en"))
-    texts = [str(text).strip()[:500] for text in payload.get("texts", []) if str(text).strip()][:200]
-    if language == "en" or not texts:
-        return {"translations": texts}
-    if language not in {"hi", "mr"}:
-        raise HTTPException(status_code=400, detail="Unsupported site language")
-    target = "natural, simple Hindi in Devanagari" if language == "hi" else "natural, simple Marathi in Devanagari"
-    client = OpenAI(api_key=settings.OPENAI_API_KEY, timeout=25.0, max_retries=1)
-    response = client.responses.create(
-        model=settings.OPENAI_MODEL,
-        instructions=f"Translate each UI string into {target}. Keep names, email addresses, IDs, dates, currency values, and numbers unchanged. Preserve the input order. Return only the JSON object required by the schema.",
-        input=json.dumps(texts, ensure_ascii=False),
-        reasoning={"effort": "low"},
-        text={"format": {"type": "json_schema", "name": "ui_translations", "strict": True, "schema": {
-            "type": "object", "properties": {"translations": {"type": "array", "items": {"type": "string"}}},
-            "required": ["translations"], "additionalProperties": False,
-        }}},
-    )
-    result = json.loads(response.output_text)
-    translations = result.get("translations", [])
-    if len(translations) != len(texts):
-        raise HTTPException(status_code=502, detail="Translation response was incomplete")
-    return {"translations": translations}
 
 
 @router.post("/chat", response_model=ChatResponse)
