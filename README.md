@@ -135,7 +135,7 @@ Building and flat are selected from real society records. An administrator sees 
 
 ## Windows quick start
 
-Install Python 3.11 or newer and a current Node.js LTS release. From the repository root, run:
+On Windows 10 or Windows 11, clone or download the repository and run this from the repository root:
 
 ```bat
 start.bat
@@ -143,13 +143,17 @@ start.bat
 
 The startup script:
 
-1. Validates Python and Node.js.
-2. Creates the local Python environment when missing.
-3. Synchronizes Python and frontend dependencies after every pull.
-4. Creates ignored local environment files from the examples when missing.
-5. Applies every Alembic migration.
-6. Adds only missing development seed records.
+1. Detects compatible system installations of Python 3.11+ and Node.js 20+.
+2. If either runtime is missing, downloads an isolated Python 3.12 runtime and the current portable Node.js LTS release from their official websites. Administrator access is not required.
+3. Creates the local Python virtual environment and installs all backend dependencies.
+4. Installs all locked frontend dependencies through npm.
+5. Creates ignored local environment files from the examples when missing.
+6. Applies every Alembic migration and adds only missing development seed records.
 7. Starts the API at `http://localhost:8000` and web app at `http://localhost:5173`.
+
+A fresh computer only needs Windows PowerShell and an internet connection for the first run. Both are normally available on supported Windows installations. Downloaded runtimes are stored in the ignored `.tools` directory and are reused on later runs. Run `start.bat --setup-only` to install and verify everything without starting the servers.
+
+The application and manual workflows start without third-party credentials. Panchayat AI, Indian-language speech, live Razorpay payments, email, and Telegram require their corresponding keys to be added to `backend/.env`; secrets are intentionally never downloaded or committed automatically.
 
 API documentation is available at `http://localhost:8000/docs`.
 
