@@ -9,7 +9,7 @@ from app.models.society import Block, Flat, Society
 from app.schemas.society import (
     BlockCreate, BlockOut, FlatCreate, FlatOut, SocietyCreate, SocietyOut,
 )
-from app.services.location_service import floor_for_flat, is_valid_flat, is_valid_wing
+from app.services.location_service import all_flat_numbers, floor_for_flat, is_valid_flat, is_valid_wing
 
 router = APIRouter(prefix="/societies", tags=["societies"])
 
@@ -42,6 +42,7 @@ def list_society_flats(db: Session = Depends(get_db),
         select(Flat).join(Block).where(
             Flat.society_id == current.society_id,
             Block.name.in_(["A", "B", "C", "D"]),
+            Flat.number.in_(all_flat_numbers()),
         ).order_by(Block.name, Flat.floor, Flat.number)
     ).scalars().all()
     return [FlatOut.model_validate(flat) for flat in rows]
@@ -52,7 +53,10 @@ def list_blocks(society_id: int, db: Session = Depends(get_db),
                 current=Depends(get_current_user)) -> list[BlockOut]:
     if not current.is_superuser and society_id != current.society_id:
         raise HTTPException(status_code=403, detail="Forbidden")
-    rows = db.execute(select(Block).where(Block.society_id == society_id)).scalars().all()
+    rows = db.execute(select(Block).where(
+        Block.society_id == society_id,
+        Block.name.in_(["A", "B", "C", "D"]),
+    ).order_by(Block.name)).scalars().all()
     return [BlockOut.model_validate(b) for b in rows]
 
 
@@ -79,7 +83,12 @@ def list_flats(block_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Block not found")
     if not current.is_superuser and block.society_id != current.society_id:
         raise HTTPException(status_code=403, detail="Forbidden")
-    rows = db.execute(select(Flat).where(Flat.block_id == block_id)).scalars().all()
+    if not is_valid_wing(block.name):
+        return []
+    rows = db.execute(select(Flat).where(
+        Flat.block_id == block_id,
+        Flat.number.in_(all_flat_numbers()),
+    ).order_by(Flat.floor, Flat.number)).scalars().all()
     return [FlatOut.model_validate(f) for f in rows]
 
 

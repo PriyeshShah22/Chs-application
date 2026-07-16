@@ -10,8 +10,8 @@ import type { Flat, Visitor } from "../types/api";
 import { formatSocietyDateTime, societyInputToUtc, toSocietyDateTimeInput } from "../utils/dateTime";
 
 type ResidentProfile = { flat_id: number };
-type FormState = { wing: string; flat_id: string; name: string; phone: string; purpose: string; vehicle_number: string; expected_at: string };
-const emptyForm = (): FormState => ({ wing: "", flat_id: "", name: "", phone: "", purpose: "", vehicle_number: "", expected_at: toSocietyDateTimeInput() });
+type FormState = { wing: string; flat_number: string; name: string; phone: string; purpose: string; vehicle_number: string; expected_at: string };
+const emptyForm = (): FormState => ({ wing: "", flat_number: "", name: "", phone: "", purpose: "", vehicle_number: "", expected_at: toSocietyDateTimeInput() });
 const statusTone: Record<string, "default" | "warning" | "success" | "error" | "info"> = { pending: "warning", approved: "info", rejected: "error", checked_in: "success", checked_out: "default" };
 const purposes = ["Guest visit", "Delivery", "Maintenance", "Domestic help"];
 
@@ -29,13 +29,16 @@ export default function Visitors() {
   const profile = useQuery({ queryKey: ["resident-profile"], queryFn: async () => (await api.get<ResidentProfile>("/residents/me")).data, retry: false, enabled: roles.has("resident") });
   const flats = useQuery({ queryKey: ["society-flats"], queryFn: async () => (await api.get<Flat[]>("/societies/flats")).data });
   const list = useQuery({ queryKey: ["visitors"], queryFn: async () => (await api.get<Visitor[]>("/visitors/?limit=200")).data });
-  const selectedFlat = (flats.data ?? []).find((flat) => flat.id === (canChooseHousehold ? Number(form.flat_id) : profile.data?.flat_id));
-  const availableFlats = (flats.data ?? []).filter((flat) => flat.block_name === form.wing);
+  const enteredFlatIsValid = /^[1-4]0[1-4]$/.test(form.flat_number);
+  const selectedFlat = (flats.data ?? []).find((flat) => canChooseHousehold
+    ? flat.block_name === form.wing && flat.number === form.flat_number
+    : flat.id === profile.data?.flat_id);
+  const flatNumberError = canChooseHousehold && form.flat_number.length === 3 && (!enteredFlatIsValid || !selectedFlat);
   const reset = () => setForm(emptyForm());
   const create = useMutation({
     mutationFn: async () => api.post("/visitors/", {
       society_id: me?.society_id,
-      flat_id: canChooseHousehold ? Number(form.flat_id) : profile.data?.flat_id,
+      flat_id: selectedFlat?.id ?? profile.data?.flat_id,
       name: form.name.trim(), phone: form.phone.trim() || null, purpose: form.purpose.trim() || null,
       vehicle_number: form.vehicle_number.trim().toUpperCase() || null,
       expected_at: societyInputToUtc(form.expected_at),
@@ -56,7 +59,7 @@ export default function Visitors() {
   }), [list.data, search, tab]);
   if (list.isLoading) return <LoadingPanel />;
   const all = list.data ?? [];
-  const formReady = form.name.trim().length >= 2 && Boolean(form.expected_at) && (canChooseHousehold ? Boolean(form.flat_id) : Boolean(profile.data?.flat_id));
+  const formReady = form.name.trim().length >= 2 && Boolean(form.expected_at) && Boolean(selectedFlat);
 
   return <Stack spacing={3}>
     <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ md: "end" }} spacing={2}>
@@ -79,7 +82,7 @@ export default function Visitors() {
             </FormSection>
             <Divider />
             <FormSection number="2" icon={<ApartmentRounded />} title="Where are they going?" subtitle="Choose the exact wing and flat so the pass reaches the right gate desk.">
-              {canChooseHousehold ? <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}><TextField select required label="Wing / building" value={form.wing} onChange={(event) => setForm({ ...form, wing: event.target.value, flat_id: "" })} helperText="Buildings A to D">{["A", "B", "C", "D"].map((wing) => <MenuItem key={wing} value={wing}>Wing {wing}</MenuItem>)}</TextField><TextField select required disabled={!form.wing} label="Flat number" value={form.flat_id} onChange={(event) => setForm({ ...form, flat_id: event.target.value })} helperText={form.wing ? "4 floors · 4 flats per floor" : "Choose a wing first"}>{availableFlats.map((flat) => <MenuItem key={flat.id} value={String(flat.id)}>Flat {flat.number} · Floor {flat.floor}</MenuItem>)}</TextField></Box> : <Paper variant="outlined" sx={{ p: 2, bgcolor: "action.hover" }}><Stack direction="row" alignItems="center" spacing={1.5}><ApartmentRounded color="primary" /><Box><Typography fontWeight={850}>{selectedFlat ? `Wing ${selectedFlat.block_name} · Flat ${selectedFlat.number}` : "Loading your registered home…"}</Typography><Typography variant="body2" color="text.secondary">The pass is securely linked to your approved resident profile.</Typography></Box></Stack></Paper>}
+              {canChooseHousehold ? <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}><TextField select required label="Wing / building" value={form.wing} onChange={(event) => setForm({ ...form, wing: event.target.value, flat_number: "" })} helperText="Buildings A to D">{["A", "B", "C", "D"].map((wing) => <MenuItem key={wing} value={wing}>Wing {wing}</MenuItem>)}</TextField><TextField required disabled={!form.wing} label="Flat number" value={form.flat_number} onChange={(event) => setForm({ ...form, flat_number: event.target.value.replace(/\D/g, "").slice(0, 3) })} error={flatNumberError} inputProps={{ inputMode: "numeric", maxLength: 3, pattern: "[1-4]0[1-4]" }} placeholder="For example, 101" helperText={!form.wing ? "Choose a wing first" : flatNumberError ? "Enter 101-104, 201-204, 301-304, or 401-404" : selectedFlat ? `Valid flat on floor ${selectedFlat.floor}` : "Type a three-digit flat number"} /></Box> : <Paper variant="outlined" sx={{ p: 2, bgcolor: "action.hover" }}><Stack direction="row" alignItems="center" spacing={1.5}><ApartmentRounded color="primary" /><Box><Typography fontWeight={850}>{selectedFlat ? `Wing ${selectedFlat.block_name} · Flat ${selectedFlat.number}` : "Loading your registered home…"}</Typography><Typography variant="body2" color="text.secondary">The pass is securely linked to your approved resident profile.</Typography></Box></Stack></Paper>}
             </FormSection>
             <Divider />
             <FormSection number="3" icon={<CalendarMonthRounded />} title="When and why?" subtitle="Times are saved and shown in Indian Standard Time (IST).">

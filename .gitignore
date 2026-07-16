@@ -138,6 +138,7 @@ htmlcov/
 tmp/
 temp/
 .tools/
+.codex-remote-attachments/
 
 ############################
 # Build files

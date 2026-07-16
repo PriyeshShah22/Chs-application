@@ -10,6 +10,18 @@ if not exist "frontend-web\node_modules" goto :not_ready
 if not exist "backend\.env" goto :not_ready
 if not exist "frontend-web\.env" goto :not_ready
 
+echo [START] Checking for database updates...
+pushd "backend"
+".venv\Scripts\python.exe" "scripts\migrate.py"
+if errorlevel 1 (
+  popd
+  echo.
+  echo [DATABASE UPDATE FAILED] Run setup.bat once to repair the local database.
+  pause
+  exit /b 1
+)
+popd
+
 echo [START] Backend: http://localhost:8000/docs
 start "Panchayat AI Backend" cmd /k "cd /d ""%~dp0backend"" && .venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 

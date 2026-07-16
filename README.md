@@ -159,7 +159,7 @@ After setup prints `[READY]`, launch the app with:
 start.bat
 ```
 
-`start.bat` is intentionally fast. It does not install packages, migrate the database, or seed data. It only starts the API at `http://localhost:8000`, starts the web app at `http://localhost:5173`, and opens the site. Run `setup.bat` again only after dependency changes or when setup/database repair is required.
+`start.bat` remains fast: it skips dependency installation and seeding, but now applies pending database migrations before launching. This prevents a newly pulled update from using an outdated local schema. It then starts the API at `http://localhost:8000`, starts the web app at `http://localhost:5173`, and opens the site. Run `setup.bat` again only after dependency changes or when database repair is required.
 
 The application and manual workflows start without third-party credentials. Panchayat AI, Indian-language speech, live Razorpay payments, email, and Telegram require their corresponding keys to be added to `backend/.env`; secrets are intentionally never downloaded or committed automatically.
 
