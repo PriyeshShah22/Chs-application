@@ -1,0 +1,68 @@
+import unittest
+
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
+from app.db.base import Base
+from app.models.notification import UserNotification
+from app.models.resident import Resident
+from app.models.society import Block, Flat, Society
+from app.models.user import Role, User
+from app.models.visitor import Visitor, VisitorStatus
+from app.services.ai_service import _create_action, _tools_for, confirm_action
+
+
+class AIVisitorPassTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.db = Session(self.engine)
+        society = Society(name="Test Society", address="Test address")
+        self.db.add(society)
+        self.db.flush()
+        block = Block(society_id=society.id, name="A", floors=4)
+        self.db.add(block)
+        self.db.flush()
+        flat = Flat(society_id=society.id, block_id=block.id, number="101", floor=1)
+        self.db.add(flat)
+        roles = {name: Role(name=name) for name in ("resident", "admin", "committee")}
+        self.db.add_all(roles.values())
+        self.db.flush()
+        self.resident = User(email="resident@test.local", full_name="Asha", hashed_password="x", society_id=society.id, roles=[roles["resident"]])
+        self.admin = User(email="admin@test.local", full_name="Admin", hashed_password="x", society_id=society.id, roles=[roles["admin"]])
+        self.committee = User(email="committee@test.local", full_name="Committee", hashed_password="x", society_id=society.id, roles=[roles["committee"]])
+        self.db.add_all([self.resident, self.admin, self.committee])
+        self.db.flush()
+        self.db.add(Resident(user_id=self.resident.id, flat_id=flat.id, ownership="owner"))
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+        self.engine.dispose()
+
+    def test_resident_has_visitor_tool_and_confirmation_creates_pending_pass(self):
+        self.assertIn("create_visitor_pass", {tool["name"] for tool in _tools_for(self.resident)})
+        _result, action = _create_action(self.db, self.resident, "create_visitor_pass", {
+            "visitor_name": "Ajay Patil",
+            "purpose": "Family visit",
+            "expected_at": "2027-01-20T18:00:00+05:30",
+            "phone": None,
+            "vehicle_number": "mh12ab1234",
+        })
+        self.assertIsNotNone(action)
+        self.assertEqual(0, self.db.query(Visitor).count())
+
+        result = confirm_action(self.db, self.resident, action.id)
+
+        visitor = self.db.get(Visitor, result["entity_id"])
+        self.assertEqual(VisitorStatus.pending, visitor.status)
+        self.assertEqual("MH12AB1234", visitor.vehicle_number)
+        targets = self.db.execute(select(UserNotification.user_id).where(UserNotification.kind == "visitor_approval_required")).scalars().all()
+        self.assertEqual({self.admin.id, self.committee.id}, set(targets))
+
+    def test_user_without_resident_profile_does_not_receive_visitor_tool(self):
+        self.assertNotIn("create_visitor_pass", {tool["name"] for tool in _tools_for(self.admin)})
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -37,7 +37,6 @@ import {
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/auth";
 import { useThemeStore } from "../store/theme";
-import AdminJoinInbox from "./AdminJoinInbox";
 import { LanguageToggle } from "./LanguageToggle";
 import { useI18n } from "../store/language";
 import NotificationInbox from "./NotificationInbox";
@@ -93,10 +92,9 @@ export default function AppLayout() {
       {!mobile && <Stack direction="row" spacing={.5} sx={{ ml: 7, flex: 1 }}>{primary.map((item) => <Button key={item.to} onClick={() => go(item.to)} startIcon={item.icon} color="inherit" sx={{ px: 1.5, bgcolor: active(item.to) ? "#E8E2D1" : "transparent", color: active(item.to) ? "#173F35" : "text.secondary" }}>{t(item.label)}</Button>)}</Stack>}
       {mobile ? <Stack direction="row" alignItems="center" spacing={.25} sx={{ flexShrink: 0 }}>
         <NotificationInbox />
-        {isAdmin && <AdminJoinInbox />}
         <IconButton aria-label={t("Open navigation menu")} aria-expanded={menuOpen} onClick={() => setMenuOpen(true)} sx={{ width: 44, height: 44, bgcolor: "action.hover" }}><MenuRounded /></IconButton>
       </Stack> : <Stack direction="row" alignItems="center" spacing={1}>
-        <LanguageToggle /><Chip icon={<Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "success.main" }} />} label={t("Connected")} variant="outlined" size="small" sx={{ display: { xs: "none", xl: "flex" } }} /><NotificationInbox />{isAdmin && <AdminJoinInbox />}<Tooltip title="Change theme"><IconButton onClick={toggle}>{mode === "dark" ? <LightModeRounded /> : <DarkModeRounded />}</IconButton></Tooltip><Avatar sx={{ width: 38, height: 38, bgcolor: "#D76049", fontWeight: 800 }}>{user?.full_name?.[0] ?? "U"}</Avatar><Box sx={{ display: { xs: "none", lg: "block" } }}><Typography variant="body2" fontWeight={800}>{user?.full_name}</Typography><Typography variant="caption" color="text.secondary">{isAdmin ? "admin" : isCommittee ? "committee" : roles[0] ?? "resident"}</Typography></Box><Tooltip title={t("Sign out")}><IconButton onClick={signOut}><LogoutRounded /></IconButton></Tooltip>
+        <LanguageToggle /><Chip icon={<Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "success.main" }} />} label={t("Connected")} variant="outlined" size="small" sx={{ display: { xs: "none", xl: "flex" } }} /><NotificationInbox /><Tooltip title="Change theme"><IconButton onClick={toggle}>{mode === "dark" ? <LightModeRounded /> : <DarkModeRounded />}</IconButton></Tooltip><Avatar sx={{ width: 38, height: 38, bgcolor: "#D76049", fontWeight: 800 }}>{user?.full_name?.[0] ?? "U"}</Avatar><Box sx={{ display: { xs: "none", lg: "block" } }}><Typography variant="body2" fontWeight={800}>{user?.full_name}</Typography><Typography variant="caption" color="text.secondary">{isAdmin ? "admin" : isCommittee ? "committee" : roles[0] ?? "resident"}</Typography></Box><Tooltip title={t("Sign out")}><IconButton onClick={signOut}><LogoutRounded /></IconButton></Tooltip>
       </Stack>}
     </Box>
     <Box sx={{ display: "flex" }}>

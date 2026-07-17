@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
@@ -18,15 +19,19 @@ from app.models.chat import ChatMessage
 from app.models.complaint import Complaint
 from app.models.notice import Notice
 from app.models.user import User
+from app.models.visitor import Visitor, VisitorStatus
 from app.schemas.complaint import ComplaintCreate
 from app.services.ai_scope_service import is_society_request, scope_refusal
 from app.services.complaint_service import classify_complaint, create_complaint
 from app.services.language_service import detect_language_code
+from app.services.notification_service import notify_roles
+from app.core.time import as_utc_naive
 
 
 READ_TOOLS = {"get_current_dues", "get_my_complaints", "get_recent_notices"}
 ACTION_RISKS = {
     "create_complaint": AIActionRisk.medium,
+    "create_visitor_pass": AIActionRisk.medium,
     "pay_outstanding_dues": AIActionRisk.high,
     "publish_announcement": AIActionRisk.high,
     "delete_notice": AIActionRisk.high,
@@ -65,12 +70,24 @@ def _tools_for(user: User) -> List[dict]:
             },
             ["title", "description", "priority"],
         ),
+        _tool(
+            "create_visitor_pass",
+            "Prepare a guest visitor-pass request for the authenticated resident's linked flat. It remains pending for admin or committee approval and is never executed without resident confirmation.",
+            {
+                "visitor_name": {"type": "string", "minLength": 2, "maxLength": 150},
+                "purpose": {"type": "string", "minLength": 2, "maxLength": 200},
+                "expected_at": {"type": ["string", "null"], "description": "ISO 8601 arrival date/time when known, using the Asia/Kolkata +05:30 offset for a local time; otherwise null."},
+                "phone": {"type": ["string", "null"], "maxLength": 20},
+                "vehicle_number": {"type": ["string", "null"], "maxLength": 50},
+            },
+            ["visitor_name", "purpose", "expected_at", "phone", "vehicle_number"],
+        ),
         _tool("pay_outstanding_dues",
               "Prepare one checkout for all outstanding maintenance months belonging to the authenticated resident. The server resolves every bill and exact combined amount.",
               {}, []),
     ]
     if "resident" not in user.role_names or not user.resident:
-        tools = [tool for tool in tools if tool["name"] != "create_complaint"]
+        tools = [tool for tool in tools if tool["name"] not in {"create_complaint", "create_visitor_pass"}]
     if user.is_superuser or "admin" in user.role_names:
         tools.append(_tool(
             "publish_announcement",
@@ -115,6 +132,7 @@ Prepare at most one write action per request. You may perform read tools first w
 If required information is missing, ask one short clarifying question and do not call a tool.
 For complaints, infer priority without asking unless the user explicitly gives a priority. Use impact, safety risk, number of people affected, duration, and emotional urgency as signals. Strong emotion alone must not make a harmless issue urgent. Use urgent only for an immediate serious risk such as fire, electrical danger, lift entrapment, flooding, security danger, or loss of an essential service.
 Complaint tool title and description must always be clear, formal English, even when the conversation is Hindi, Marathi, or Hinglish. Preserve the facts and meaning; do not store transliterated Hindi or Marathi. The conversational preview may be in the user's language.
+For a guest pass, collect the visitor's name and purpose. Arrival time, phone, and vehicle number are optional and should be null when the resident does not know them. Use the resident's linked flat automatically. Explain that the request will still require admin or committee approval.
 For any request to pay maintenance or bills, prepare pay_outstanding_dues. Include every unpaid older month in one combined checkout and explain the combined total clearly.
 Only an admin can publish or remove an announcement; tell non-admin users they lack permission. Before preparing notice deletion, identify one exact existing notice and clearly name it in the confirmation preview.
 The reply language is independent of the website language toggle. {language_hint} Reply in the same language and script as the user's current message. For a short or ambiguous confirmation such as yes, no, okay, haan, or ho, continue the language used in the recent conversation. Use simple words suitable for a low-literacy user.
@@ -194,6 +212,25 @@ def _create_action(db: Session, user: User, action_type: str, args: dict) -> tup
         }
         category = classify_complaint(f"{args['title']} {args['description']}")
         summary = f"Submit a {category.lower()} complaint: {args['title']}"
+    elif action_type == "create_visitor_pass":
+        if "resident" not in user.role_names or not user.resident or not user.society_id:
+            return {"error": "A linked resident household is required to request a visitor pass."}, None
+        expected_at = args.get("expected_at")
+        if expected_at:
+            try:
+                expected_at = as_utc_naive(datetime.fromisoformat(expected_at.replace("Z", "+00:00"))).isoformat()
+            except ValueError:
+                return {"error": "The expected arrival time was not valid. Please give the date and time again."}, None
+        payload = {
+            "visitor_name": args["visitor_name"].strip(),
+            "purpose": args["purpose"].strip(),
+            "expected_at": expected_at,
+            "phone": (args.get("phone") or "").strip() or None,
+            "vehicle_number": (args.get("vehicle_number") or "").strip().upper() or None,
+            "society_id": user.society_id,
+            "flat_id": user.resident.flat_id,
+        }
+        summary = f"Request a guest pass for {payload['visitor_name']} to visit {user.resident.flat.block.name}-{user.resident.flat.number}"
     elif action_type == "pay_outstanding_dues":
         bills = db.execute(select(Bill).where(
             Bill.billed_user_id == user.id,
@@ -426,6 +463,44 @@ def confirm_action(db: Session, user: User, action_id: int, language: str = "en-
                 f"Complaint #{complaint.id} was submitted.",
                 f"शिकायत #{complaint.id} जमा हो गई है।",
                 f"तक्रार #{complaint.id} नोंदवली आहे.",
+            )
+        elif action.action_type == "create_visitor_pass":
+            if "resident" not in user.role_names or not user.resident or not user.society_id:
+                raise PermissionError("A linked resident household is required")
+            if payload["society_id"] != user.society_id or payload["flat_id"] != user.resident.flat_id:
+                raise PermissionError("The linked household changed; please create the request again")
+            expected_at = datetime.fromisoformat(payload["expected_at"]) if payload.get("expected_at") else None
+            visitor = Visitor(
+                society_id=user.society_id,
+                flat_id=user.resident.flat_id,
+                host_id=user.id,
+                name=payload["visitor_name"],
+                purpose=payload["purpose"],
+                phone=payload.get("phone"),
+                vehicle_number=payload.get("vehicle_number"),
+                expected_at=expected_at,
+                qr_code=secrets.token_urlsafe(12),
+                status=VisitorStatus.pending,
+            )
+            db.add(visitor)
+            db.flush()
+            flat = user.resident.flat
+            notify_roles(
+                db,
+                society_id=user.society_id,
+                roles={"admin", "committee"},
+                kind="visitor_approval_required",
+                title="Visitor pass awaiting approval",
+                message=f"{user.full_name} requested access for {visitor.name} to Wing {flat.block.name}, Flat {flat.number}.",
+                entity_type="visitor",
+                entity_id=visitor.id,
+            )
+            entity_type, entity_id = "visitor", visitor.id
+            message = _action_message(
+                language,
+                f"Visitor pass #{visitor.id} for {visitor.name} was sent for approval.",
+                f"{visitor.name} के लिए आगंतुक पास #{visitor.id} मंज़ूरी के लिए भेज दिया गया है।",
+                f"{visitor.name} यांच्यासाठी पाहुणा पास #{visitor.id} मंजुरीसाठी पाठवला आहे.",
             )
         elif action.action_type == "pay_outstanding_dues":
             bills = db.execute(select(Bill).where(Bill.id.in_(payload["bill_ids"]), Bill.billed_user_id == user.id)).scalars().all()

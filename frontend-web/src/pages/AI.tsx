@@ -15,7 +15,6 @@ import {
   useTheme,
 } from "@mui/material";
 import {
-  AutoAwesomeRounded,
   CancelOutlined,
   CheckCircleRounded,
   HearingRounded,
@@ -359,15 +358,9 @@ export default function AI() {
   return (
     <Stack spacing={{ xs: 0, md: 2.5 }} sx={{ maxWidth: 980, mx: { xs: -2, sm: -3, md: "auto" }, mt: { xs: -2, sm: -3, md: 0 }, mb: { xs: -2, sm: -3, md: 0 }, minHeight: { xs: "calc(100dvh - 64px)", md: "auto" } }}>
       <Box textAlign="center" sx={{ display: { xs: "none", md: "block" } }}>
-        <Chip
-          icon={<AutoAwesomeRounded />}
-          label="Sarvam + OpenAI agent"
-          color="success"
-          size="small"
-        />
         <Typography
           variant="h2"
-          sx={{ mt: 1.5, fontSize: { xs: "2.4rem", md: "4rem" } }}
+          sx={{ fontSize: { xs: "2.4rem", md: "4rem" } }}
         >
           {t("Ask Panchayat")}
         </Typography>

@@ -130,7 +130,7 @@ notepad .env          # set VITE_API_BASE_URL=http://localhost:8000/api/v1
 npm run dev
 ```
 
-Open `http://localhost:5173` and sign in with `admin@society.com / Admin@12345`.
+Open `http://localhost:5173` and sign in with `admin@society.com / admin123`.
 
 ---
 

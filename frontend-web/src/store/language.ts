@@ -278,6 +278,8 @@ const caseInsensitiveWords = new Map(
 );
 
 const societyPhrases: Array<[string, string, string]> = [
+  ["पानी की आपूर्ति disruption in block b for the last two hours", "ब्लॉक B में पिछले दो घंटों से पानी की आपूर्ति बाधित", "ब्लॉक B मध्ये मागील दोन तासांपासून पाणीपुरवठा खंडित"],
+  ["water supply disruption in block b for the last two hours", "ब्लॉक B में पिछले दो घंटों से पानी की आपूर्ति बाधित", "ब्लॉक B मध्ये मागील दोन तासांपासून पाणीपुरवठा खंडित"],
   ["bedroom roof se pani leakage", "बेडरूम की छत से पानी का रिसाव", "बेडरूमच्या छतामधून पाण्याची गळती"],
   ["bedroom ke roof se pani ka leak ho raha hai", "बेडरूम की छत से पानी रिस रहा है", "बेडरूमच्या छतामधून पाणी गळत आहे"],
   ["problem aaj (today) se start hui hai", "समस्या आज से शुरू हुई है", "समस्या आजपासून सुरू झाली आहे"],
@@ -289,6 +291,9 @@ const societyPhrases: Array<[string, string, string]> = [
   ["request the society to inspect the road and carry out urgent patch repair/repair of the affected area to prevent further accidents", "आगे की दुर्घटनाएँ रोकने के लिए सोसायटी से सड़क का निरीक्षण और प्रभावित हिस्से की तत्काल मरम्मत का अनुरोध है", "पुढील अपघात टाळण्यासाठी सोसायटीने रस्त्याची तपासणी करून बाधित भागाची तातडीने दुरुस्ती करावी"],
   ["water leakage", "पानी का रिसाव", "पाण्याची गळती"],
   ["water supply", "पानी की आपूर्ति", "पाणीपुरवठा"],
+  ["for the last two hours", "पिछले दो घंटों से", "मागील दोन तासांपासून"],
+  ["disruption", "बाधा", "खंडित सेवा"],
+  ["block", "ब्लॉक", "विंग"],
   ["not working", "काम नहीं कर रहा", "काम करत नाही"],
   ["since morning", "सुबह से", "सकाळपासून"],
   ["urgent repair", "तत्काल मरम्मत", "तातडीची दुरुस्ती"],
@@ -300,7 +305,7 @@ const societyPhrases: Array<[string, string, string]> = [
   ["noise complaint", "शोर की शिकायत", "आवाजाची तक्रार"],
 ];
 
-const societyContentMarker = /\b(leak|leakage|pani|water|pipe|sink|roof|lift|pothole|road|repair|garbage|waste|light|electric|parking|noise|security|safety|injury|complaint|problem)\b/i;
+const societyContentMarker = /[\u0900-\u097f]|\b(leak|leakage|pani|water|pipe|sink|roof|lift|pothole|road|repair|garbage|waste|light|electric|parking|noise|security|safety|injury|complaint|problem|disruption|block)\b/i;
 
 export function translateSocietyText(text: string, language: AppLanguage) {
   if (language === "en" || !text.trim()) return text;

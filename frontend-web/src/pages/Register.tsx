@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Alert, Box, Button, Card, CardContent, Link, MenuItem, Stack, TextField, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
@@ -9,12 +9,58 @@ type SocietyOption = { id: number; name: string; buildings: { id: number; name: 
 
 export default function Register() {
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", date_of_birth: "", password: "", society_id: "", building_name: "", flat_number: "" });
-  const [error, setError] = useState<string | null>(null); const [submitted, setSubmitted] = useState(false); const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
   const societies = useQuery({ queryKey: ["public-societies"], queryFn: async () => (await api.get<SocietyOption[]>("/auth/societies")).data });
   const society = societies.data?.find((item) => item.id === Number(form.society_id));
   const building = society?.buildings.find((item) => item.name === form.building_name);
   const update = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [key]: event.target.value });
-  async function submit(event: React.FormEvent) { event.preventDefault(); setLoading(true); setError(null); try { await api.post("/auth/join-requests", { ...form, society_id: Number(form.society_id), phone: form.phone || null }); setSubmitted(true); } catch (err: any) { setError(err?.response?.data?.detail || "Your request could not be sent. Please try again."); } finally { setLoading(false); } }
-  const readable = useMemo(() => ({ color: "#1E2A26", "& .MuiInputLabel-root": { color: "#4C5B54" }, "& .MuiOutlinedInput-input": { color: "#1E2A26" }, "& .MuiOutlinedInput-notchedOutline": { borderColor: "#627069" } }), []);
-  return <Box sx={{ minHeight: "100vh", bgcolor: "#F8F5EA", p: 2, ...readable }}><Stack alignItems="flex-end" sx={{ maxWidth: 620, mx: "auto", mb: 2 }}><LanguageToggle /></Stack><Card sx={{ maxWidth: 620, mx: "auto", bgcolor: "#FFFDF7", color: "#1E2A26", borderColor: "#D5CEBC" }}><CardContent sx={{ p: { xs: 3, sm: 5 } }}>{submitted ? <Stack spacing={2} alignItems="flex-start"><Typography variant="overline" color="#176B52" fontWeight={900}>REQUEST SENT</Typography><Typography variant="h3">We’ll check your membership.</Typography><Typography color="#56645D">An administrator will verify your building and flat before activating the account.</Typography><Button component={RouterLink} to="/login" variant="contained">Back to sign in</Button></Stack> : <><Typography variant="overline" color="#176B52" fontWeight={900}>VERIFIED MEMBERSHIP</Typography><Typography variant="h3" sx={{ mt: 1 }}>Request to join</Typography><Typography sx={{ mt: 1, color: "#56645D" }}>Your exact society, building, and flat are compulsory so the administrator can verify that you live here.</Typography><Box component="form" onSubmit={submit} sx={{ mt: 3 }}><Stack spacing={2}><TextField label="Full name" required value={form.full_name} onChange={update("full_name")} /><TextField label="Date of birth" type="date" required value={form.date_of_birth} onChange={update("date_of_birth")} InputLabelProps={{ shrink: true }} /><TextField select label="Society" required value={form.society_id} onChange={(event) => setForm({ ...form, society_id: event.target.value, building_name: "", flat_number: "" })}>{(societies.data ?? []).map((item) => <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>)}</TextField><Stack direction={{ xs: "column", sm: "row" }} spacing={2}><TextField select fullWidth label="Building" required disabled={!society} value={form.building_name} onChange={(event) => setForm({ ...form, building_name: event.target.value, flat_number: "" })}>{(society?.buildings ?? []).map((item) => <MenuItem key={item.id} value={item.name}>{item.name}</MenuItem>)}</TextField><TextField select fullWidth label="Flat number" required disabled={!building} value={form.flat_number} onChange={update("flat_number")}>{(building?.flats ?? []).map((item) => <MenuItem key={item.id} value={item.number}>{item.number}</MenuItem>)}</TextField></Stack><TextField label="Email" type="email" required value={form.email} onChange={update("email")} /><TextField label="Phone number" value={form.phone} onChange={update("phone")} /><TextField label="Create password" type="password" required helperText="Stored securely and never shown to administrators." value={form.password} onChange={update("password")} />{error && <Alert severity="error">{error}</Alert>}<Button type="submit" variant="contained" size="large" disabled={loading || !form.society_id || !form.building_name || !form.flat_number}>{loading ? "Sending request…" : "Request to join"}</Button><Link component={RouterLink} to="/login" textAlign="center">Already approved? Sign in</Link></Stack></Box></>}</CardContent></Card></Box>;
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      await api.post("/auth/join-requests", { ...form, society_id: Number(form.society_id), phone: form.phone || null });
+      setSubmitted(true);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "Your request could not be sent. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return <Box sx={{ minHeight: "100vh", bgcolor: "background.default", color: "text.primary", p: 2 }}>
+    <Stack alignItems="flex-end" sx={{ maxWidth: 620, mx: "auto", mb: 2 }}><LanguageToggle /></Stack>
+    <Card sx={{ maxWidth: 620, mx: "auto", bgcolor: "background.paper", color: "text.primary" }}>
+      <CardContent sx={{ p: { xs: 3, sm: 5 } }}>
+        {submitted ? <Stack spacing={2} alignItems="flex-start">
+          <Typography variant="overline" color="primary" fontWeight={900}>REQUEST SENT</Typography>
+          <Typography variant="h3">We’ll check your membership.</Typography>
+          <Typography color="text.secondary">An administrator will verify your building and flat before activating the account.</Typography>
+          <Button component={RouterLink} to="/login" variant="contained">Back to sign in</Button>
+        </Stack> : <>
+          <Typography variant="overline" color="primary" fontWeight={900}>VERIFIED MEMBERSHIP</Typography>
+          <Typography variant="h3" sx={{ mt: 1 }}>Request to join</Typography>
+          <Typography color="text.secondary" sx={{ mt: 1 }}>Your exact society, building, and flat are compulsory so the administrator can verify that you live here.</Typography>
+          <Box component="form" onSubmit={submit} sx={{ mt: 3 }}><Stack spacing={2}>
+            <TextField label="Full name" required value={form.full_name} onChange={update("full_name")} />
+            <TextField label="Date of birth" type="date" required value={form.date_of_birth} onChange={update("date_of_birth")} InputLabelProps={{ shrink: true }} />
+            <TextField select label="Society" required value={form.society_id} onChange={(event) => setForm({ ...form, society_id: event.target.value, building_name: "", flat_number: "" })}>{(societies.data ?? []).map((item) => <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>)}</TextField>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <TextField select fullWidth label="Building" required disabled={!society} value={form.building_name} onChange={(event) => setForm({ ...form, building_name: event.target.value, flat_number: "" })}>{(society?.buildings ?? []).map((item) => <MenuItem key={item.id} value={item.name}>{item.name}</MenuItem>)}</TextField>
+              <TextField select fullWidth label="Flat number" required disabled={!building} value={form.flat_number} onChange={update("flat_number")}>{(building?.flats ?? []).map((item) => <MenuItem key={item.id} value={item.number}>{item.number}</MenuItem>)}</TextField>
+            </Stack>
+            <TextField label="Email" type="email" required value={form.email} onChange={update("email")} />
+            <TextField label="Phone number" value={form.phone} onChange={update("phone")} />
+            <TextField label="Create password" type="password" required helperText="Stored securely and never shown to administrators." value={form.password} onChange={update("password")} />
+            {error && <Alert severity="error">{error}</Alert>}
+            <Button type="submit" variant="contained" size="large" disabled={loading || !form.society_id || !form.building_name || !form.flat_number}>{loading ? "Sending request…" : "Request to join"}</Button>
+            <Link component={RouterLink} to="/login" textAlign="center">Already approved? Sign in</Link>
+          </Stack></Box>
+        </>}
+      </CardContent>
+    </Card>
+  </Box>;
 }

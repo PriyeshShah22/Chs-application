@@ -23,6 +23,7 @@ The agent can:
 - Complete a clearly labelled demo payment inside chat when Razorpay is not configured.
 - Launch the real combined Razorpay checkout inside chat when merchant keys are configured.
 - Read complaints and recent notices.
+- Prepare a guest visitor pass for the resident's linked flat and send it to administrators or committee members for approval after confirmation.
 - Publish announcements for administrators only.
 - Remove an exact notice for administrators only, with a required confirmation before deletion.
 - Remember the five most recent messages and compress earlier context.
@@ -68,7 +69,7 @@ The language control is visible in the desktop header and inside the compact mob
 
 ![Hindi home interface](docs/screenshots/hindi-home.png)
 
-The selected interface language is remembered on the device. It does not control the assistant: typed messages are detected locally, while Sarvam detects the source language of voice requests. The agent replies in the language used for that request, and read-aloud uses the detected response locale.
+The site starts in dark mode and remembers any later theme choice on the device. The selected interface language is also remembered. It does not control the assistant: typed messages are detected locally, while Sarvam detects the source language of voice requests. The agent replies in the language used for that request, and read-aloud uses the detected response locale.
 
 On phones, one hamburger button opens every permitted page without a horizontally scrolling icon bar. The assistant uses the available screen height as a native chat surface, its live waveform remains fully visible, and voice messages use hold-to-record and release-to-send interaction.
 
@@ -95,11 +96,12 @@ Public signup does not immediately create an account. A requester must provide:
 - Flat number.
 - Email, optional phone, and password.
 
-Building and flat are selected from real society records. An administrator sees the application in the membership inbox and can approve or reject it. Approval creates the account and its resident-to-flat mapping together. Passwords are never shown to administrators.
+Building and flat are selected from real society records. An administrator sees the application in the unified Inbox under Membership and can approve or reject it. Approval creates the account and its resident-to-flat mapping together. Passwords are never shown to administrators.
 
 ### Visitors and gate operations
 
 - Resident pre-registration and staff-created gate passes.
+- Voice or typed guest-pass requests through Panchayat AI, with the same approval workflow as the manual form.
 - Society-scoped flat selector rather than raw flat IDs.
 - Pending approval, approved, checked-in, rejected, and checked-out states.
 - Live counts for visitors inside, expected, awaiting approval, and completed.
@@ -215,13 +217,13 @@ The seed script creates:
 
 | Email | Password | Roles |
 |---|---|---|
-| `admin@society.com` | `Admin@12345` | Admin |
-| `committee@society.com` | `Committee@123` | Committee |
-| `security@society.com` | `Security@123` | Security |
-| `resident@society.com` | `Resident@123` | Resident |
-| `resident2@society.com` | `Ravi@12345` | Second resident used by sample records |
+| `admin@society.com` | `admin123` | Admin |
+| `committee@society.com` | `committee123` | Committee |
+| `security@society.com` | `security123` | Security |
+| `resident@society.com` | `resident123` | Resident |
+| `resident2@society.com` | `resident123` | Second resident used by sample records |
 
-These credentials are for local development only.
+These simplified credentials are for the public demonstration accounts only and must not be reused for a real deployment.
 
 ## Important API flows
 

@@ -35,6 +35,7 @@ def upsert_user(db, *, email: str, name: str, password: str,
                 phone: str | None = None) -> User:
     u = db.query(User).filter_by(email=email).one_or_none()
     if u:
+        u.hashed_password = hash_password(password)
         return u
     u = User(email=email, full_name=name, hashed_password=hash_password(password),
              society_id=society_id, is_superuser=is_super, status=UserStatus.active,
@@ -135,20 +136,20 @@ def main() -> None:
 
         # Users
         superuser = upsert_user(db, email="admin@society.com", name="Site Admin",
-                                password="Admin@12345", society_id=soc.id,
+                                password="admin123", society_id=soc.id,
                                 roles=["admin"], is_super=True)
         committee_user = upsert_user(db, email="committee@society.com", name="Priya Committee",
-                                     password="Committee@123", society_id=soc.id,
+                                     password="committee123", society_id=soc.id,
                                      roles=["committee"])
         security_user = upsert_user(db, email="security@society.com", name="Ram Security",
-                                    password="Security@123", society_id=soc.id,
+                                    password="security123", society_id=soc.id,
                                     roles=["security"])
         resident_user = upsert_user(db, email="resident@society.com", name="Asha Resident",
-                                     password="Resident@123", society_id=soc.id,
+                                     password="resident123", society_id=soc.id,
                                      roles=["resident"])
         # A second resident for visitor demos
         ravi = upsert_user(db, email="resident2@society.com", name="Ravi Kumar",
-                           password="Ravi@12345", society_id=soc.id,
+                           password="resident123", society_id=soc.id,
                            roles=["resident"], phone="+91-9000000001")
 
         # Resident profiles
@@ -218,11 +219,11 @@ def main() -> None:
         # Keep console output compatible with the default Windows code page.
         print("[OK] Seed complete")
         print("\nLogin credentials (all in society: Green Park Residency):")
-        print("  admin@society.com     / Admin@12345    (admin)")
-        print("  committee@society.com / Committee@123  (committee)")
-        print("  security@society.com  / Security@123   (security)")
-        print("  resident@society.com  / Resident@123   (resident)")
-        print("  resident2@society.com / Ravi@12345     (second resident)")
+        print("  admin@society.com     / admin123     (admin)")
+        print("  committee@society.com / committee123 (committee)")
+        print("  security@society.com  / security123  (security)")
+        print("  resident@society.com  / resident123  (resident)")
+        print("  resident2@society.com / resident123  (second resident)")
     finally:
         db.close()
 

@@ -9,9 +9,13 @@ interface ThemeState {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set) => ({
-      mode: "light",
+      mode: "dark",
       toggle: () => set((s) => ({ mode: s.mode === "light" ? "dark" : "light" })),
     }),
-    { name: "smart-society-theme" }
+    {
+      name: "smart-society-theme",
+      version: 1,
+      migrate: () => ({ mode: "dark" as const }),
+    }
   )
 );
