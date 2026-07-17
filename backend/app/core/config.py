@@ -1,13 +1,18 @@
 """Application configuration loaded from environment variables."""
+import os
 from typing import List, Optional
-from pydantic import Field
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """All settings, sourced from environment or `.env`."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=None if os.getenv("VERCEL") else ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     # App
     APP_NAME: str = "Smart Society Management System"
@@ -24,6 +29,16 @@ class Settings(BaseSettings):
     # Database (Postgres preferred; SQLite is the sandbox fallback)
     DATABASE_URL: str = "sqlite:///./smart_society.db"
     # Example production URL: postgresql+psycopg://user:password@localhost:5432/smart_society
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def use_psycopg_driver(cls, value: str) -> str:
+        """Use the installed psycopg v3 driver for provider-style Postgres URLs."""
+        if value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql+psycopg://", 1)
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+psycopg://", 1)
+        return value
 
     # CORS
     CORS_ORIGINS: List[str] = ["*"]

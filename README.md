@@ -136,6 +136,20 @@ Building and flat are selected from real society records. An administrator sees 
 - Indian-language speech: Sarvam speech-to-text translation.
 - Payments: Razorpay Orders, Checkout, signature validation, and webhooks.
 
+## Production deployment
+
+The live demonstration is split into two Vercel projects so the Vite frontend and FastAPI backend can scale independently:
+
+- Web application: [https://panchayat-ai-fawn.vercel.app](https://panchayat-ai-fawn.vercel.app)
+- API and health check: [https://panchayat-ai-api.vercel.app](https://panchayat-ai-api.vercel.app)
+- Persistent data: Neon serverless PostgreSQL connected through the Vercel Marketplace.
+
+The frontend project uses `frontend-web/vercel.json` for React Router fallback routing. The backend automatically uses encrypted Vercel environment variables instead of the local `.env` file and normalizes provider-style PostgreSQL URLs for psycopg 3. Local SQLite development remains unchanged.
+
+Production secrets such as `DATABASE_URL`, `SECRET_KEY`, `OPENAI_API_KEY`, and `SARVAM_API_KEY` are stored only in Vercel. Never add them to Git. `VITE_API_BASE_URL` is intentionally public and points the web build to the deployed API.
+
+The deployment currently uses Vercel Hobby and Neon Free resources. These are suitable for a personal demonstration and can scale to zero when idle; usage limits and provider terms still apply.
+
 ## Windows quick start
 
 On Windows 10 or Windows 11, clone or download the repository. Run the one-time installer from the repository root:
