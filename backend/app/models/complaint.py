@@ -43,6 +43,10 @@ class Complaint(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    title_hi: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    title_mr: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    description_hi: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description_mr: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     society_id: Mapped[int] = mapped_column(Integer, ForeignKey("societies.id", ondelete="CASCADE"), nullable=False, index=True)
     flat_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("flats.id", ondelete="SET NULL"), nullable=True)
 

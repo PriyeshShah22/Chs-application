@@ -53,6 +53,10 @@ export interface Complaint {
   id: number;
   title: string;
   description: string;
+  title_hi?: string | null;
+  title_mr?: string | null;
+  description_hi?: string | null;
+  description_mr?: string | null;
   society_id: number;
   flat_id?: number | null;
   reporter_id: number;

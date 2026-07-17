@@ -75,6 +75,10 @@ class ComplaintOut(BaseModel):
     id: int
     title: str
     description: str
+    title_hi: Optional[str] = None
+    title_mr: Optional[str] = None
+    description_hi: Optional[str] = None
+    description_mr: Optional[str] = None
     society_id: int
     flat_id: Optional[int] = None
     reporter_id: int

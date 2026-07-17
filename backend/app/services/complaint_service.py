@@ -6,6 +6,7 @@ from app.models.audit import AuditLog
 from app.models.complaint import Complaint, ComplaintCategory, ComplaintEvent, ComplaintPriority, ComplaintStatus
 from app.models.user import User
 from app.schemas.complaint import ComplaintCreate
+from app.services.complaint_translation_service import translate_complaint_copy
 
 
 def classify_complaint(text: str) -> str:
@@ -37,18 +38,26 @@ def create_complaint(db: Session, actor: User, payload: ComplaintCreate, *, sour
     except ValueError as exc:
         raise ValueError(f"Invalid priority '{payload.priority}'") from exc
 
+    translated = translate_complaint_copy(payload.title, payload.description)
+    canonical_title = translated.get("title_en") or payload.title
+    canonical_description = translated.get("description_en") or payload.description
+
     category_id = payload.category_id
     suggested = None
     if category_id is None:
-        suggested = classify_complaint(f"{payload.title} {payload.description}")
+        suggested = classify_complaint(f"{canonical_title} {canonical_description}")
         category = db.execute(
             select(ComplaintCategory).where(ComplaintCategory.name == suggested)
         ).scalar_one_or_none()
         category_id = category.id if category else None
 
     complaint = Complaint(
-        title=payload.title,
-        description=payload.description,
+        title=canonical_title,
+        description=canonical_description,
+        title_hi=translated.get("title_hi"),
+        title_mr=translated.get("title_mr"),
+        description_hi=translated.get("description_hi"),
+        description_mr=translated.get("description_mr"),
         society_id=actor.society_id,
         flat_id=actor.resident.flat_id,
         reporter_id=actor.id,
