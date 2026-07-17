@@ -11,7 +11,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _email = TextEditingController(text: 'admin@greenpark.com');
+  final _email = TextEditingController(text: 'admin@society.com');
   final _password = TextEditingController(text: 'Admin@12345');
   bool _busy = false;
 
@@ -84,7 +84,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     child: const Text('Create an account')),
                 const SizedBox(height: 32),
                 Text(
-                  'Demo accounts (seeded via backend/scripts/seed.py):\nadmin@greenpark.com / Admin@12345\nresident@greenpark.com / Resident@123',
+                  'Demo accounts (seeded via backend/scripts/seed.py):\nadmin@society.com / Admin@12345\nresident@society.com / Resident@123',
                   textAlign: TextAlign.center,
                   style:
                       TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),

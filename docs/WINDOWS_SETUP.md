@@ -130,7 +130,7 @@ notepad .env          # set VITE_API_BASE_URL=http://localhost:8000/api/v1
 npm run dev
 ```
 
-Open `http://localhost:5173` and sign in with `admin@greenpark.com / Admin@12345`.
+Open `http://localhost:5173` and sign in with `admin@society.com / Admin@12345`.
 
 ---
 
@@ -161,7 +161,7 @@ backend URL via the in-app settings (or call `Storage.baseUrl = ...` in
 
 1. `http://localhost:8000/health` → `{"status":"ok",...}`
 2. Swagger UI: `http://localhost:8000/docs`
-3. Web dashboard: `http://localhost:5173` → log in with `admin@greenpark.com`
+3. Web dashboard: `http://localhost:5173` → log in with `admin@society.com`
 4. Mobile app: tap the dashboard cards and verify data loads from the backend.
 
 ---

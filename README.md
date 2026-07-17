@@ -108,6 +108,9 @@ Building and flat are selected from real society records. An administrator sees 
 
 - Searchable, role-filtered resident directory.
 - Admin, Committee, Security, and Resident responsibilities.
+- Committee members receive a dedicated Committee Area with society statistics and direct links to complaints, notices, visitor approvals, and the people directory.
+- The Admin Console is restricted to administrators; bulk monthly billing and audit activity remain admin-only.
+- Committee members exercise their operational permissions through the normal Help, Notices, Gate, and People workflows.
 - Only an existing administrator can grant Admin or Committee access.
 - Admin access cannot be removed through the application.
 - Committee, Security, and Resident roles can be added or removed by administrators.
@@ -194,11 +197,11 @@ The seed script creates:
 
 | Email | Password | Roles |
 |---|---|---|
-| `admin@greenpark.com` | `Admin@12345` | Admin / superuser |
-| `committee@greenpark.com` | `Committee@123` | Committee |
-| `security@greenpark.com` | `Security@123` | Security |
-| `resident@greenpark.com` | `Resident@123` | Resident and committee |
-| `ravi@greenpark.com` | `Ravi@12345` | Resident |
+| `admin@society.com` | `Admin@12345` | Admin |
+| `committee@society.com` | `Committee@123` | Committee |
+| `security@society.com` | `Security@123` | Security |
+| `resident@society.com` | `Resident@123` | Resident |
+| `resident2@society.com` | `Ravi@12345` | Second resident used by sample records |
 
 These credentials are for local development only.
 

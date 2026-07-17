@@ -7,7 +7,7 @@ import { useAuthStore } from "../store/auth";
 import type { LoginResponse } from "../types/api";
 
 export default function Login() {
-  const [email, setEmail] = useState("resident@greenpark.com");
+  const [email, setEmail] = useState("resident@society.com");
   const [password, setPassword] = useState("Resident@123");
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +49,7 @@ export default function Login() {
             <Link component={RouterLink} to="/register" textAlign="center" fontWeight={800} sx={{ color: "#176B52" }}>Request to join</Link>
           </Stack>
         </Paper>
-        <Typography variant="caption" display="block" sx={{ mt: 2, color: "#66746D" }}>Development login: resident@greenpark.com / Resident@123</Typography>
+        <Typography variant="caption" display="block" sx={{ mt: 2, color: "#66746D" }}>Development login: resident@society.com / Resident@123</Typography>
       </Box>
     </Box>
   </Box>;

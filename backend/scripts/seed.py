@@ -85,7 +85,7 @@ def main() -> None:
                           address="21 MG Road, Sector 5",
                           city="Pune", state="MH", pincode="411014",
                           registration_no="GPR-2018-0142",
-                          contact_email="office@greenpark.com",
+                          contact_email="office@society.com",
                           contact_phone="+91-9876543210")
             db.add(soc)
             db.flush()
@@ -134,25 +134,25 @@ def main() -> None:
         db.flush()
 
         # Users
-        superuser = upsert_user(db, email="admin@greenpark.com", name="Site Admin",
+        superuser = upsert_user(db, email="admin@society.com", name="Site Admin",
                                 password="Admin@12345", society_id=soc.id,
                                 roles=["admin"], is_super=True)
-        committee_user = upsert_user(db, email="committee@greenpark.com", name="Priya Committee",
+        committee_user = upsert_user(db, email="committee@society.com", name="Priya Committee",
                                      password="Committee@123", society_id=soc.id,
                                      roles=["committee"])
-        security_user = upsert_user(db, email="security@greenpark.com", name="Ram Security",
+        security_user = upsert_user(db, email="security@society.com", name="Ram Security",
                                     password="Security@123", society_id=soc.id,
                                     roles=["security"])
-        resident_admin = upsert_user(db, email="resident@greenpark.com", name="Asha Resident",
+        resident_user = upsert_user(db, email="resident@society.com", name="Asha Resident",
                                      password="Resident@123", society_id=soc.id,
-                                     roles=["resident", "committee"])
+                                     roles=["resident"])
         # A second resident for visitor demos
-        ravi = upsert_user(db, email="ravi@greenpark.com", name="Ravi Kumar",
+        ravi = upsert_user(db, email="resident2@society.com", name="Ravi Kumar",
                            password="Ravi@12345", society_id=soc.id,
                            roles=["resident"], phone="+91-9000000001")
 
         # Resident profiles
-        for user_obj, flat in [(resident_admin, flats_by_key[("A", "101")]), (ravi, flats_by_key[("B", "101")])]:
+        for user_obj, flat in [(resident_user, flats_by_key[("A", "101")]), (ravi, flats_by_key[("B", "101")])]:
             existing = db.query(Resident).filter_by(user_id=user_obj.id).one_or_none()
             if not existing:
                 db.add(Resident(user_id=user_obj.id, flat_id=flat.id, ownership="owner",
@@ -174,7 +174,7 @@ def main() -> None:
                 title="Leakage in kitchen sink",
                 description="The kitchen sink pipe is leaking continuously.",
                 society_id=soc.id, flat_id=flats_by_key[("A", "101")].id,
-                reporter_id=resident_admin.id, category_id=plumbing.id,
+                reporter_id=resident_user.id, category_id=plumbing.id,
                 status=ComplaintStatus.in_progress,
                 priority=ComplaintPriority.high,
             ))
@@ -199,7 +199,7 @@ def main() -> None:
 
         # Visitors
         if not db.query(Visitor).first():
-            db.add(Visitor(society_id=soc.id, flat_id=flats_by_key[("A", "101")].id, host_id=resident_admin.id,
+            db.add(Visitor(society_id=soc.id, flat_id=flats_by_key[("A", "101")].id, host_id=resident_user.id,
                            name="Delivery — Amazon", phone="+91-8000000001",
                            purpose="Parcel delivery", status=VisitorStatus.checked_in))
             db.add(Visitor(society_id=soc.id, flat_id=flats_by_key[("B", "101")].id, host_id=ravi.id,
@@ -209,7 +209,7 @@ def main() -> None:
 
         # One idempotent maintenance-only demo bill. Admins normally bill every resident in one action.
         if not db.query(Bill).first():
-            create_user_bill(db, society_id=soc.id, billed_user=resident_admin,
+            create_user_bill(db, society_id=soc.id, billed_user=resident_user,
                 billing_year=date.today().year, billing_month=date.today().month,
                 due_date=date.today() + timedelta(days=15), maintenance_amount=2500,
                 description="Demonstration monthly society maintenance")
@@ -218,11 +218,11 @@ def main() -> None:
         # Keep console output compatible with the default Windows code page.
         print("[OK] Seed complete")
         print("\nLogin credentials (all in society: Green Park Residency):")
-        print("  admin@greenpark.com     / Admin@12345     (superuser + admin)")
-        print("  committee@greenpark.com / Committee@123   (committee)")
-        print("  security@greenpark.com  / Security@123    (security)")
-        print("  resident@greenpark.com  / Resident@123    (resident + committee)")
-        print("  ravi@greenpark.com      / Ravi@12345      (resident)")
+        print("  admin@society.com     / Admin@12345    (admin)")
+        print("  committee@society.com / Committee@123  (committee)")
+        print("  security@society.com  / Security@123   (security)")
+        print("  resident@society.com  / Resident@123   (resident)")
+        print("  resident2@society.com / Ravi@12345     (second resident)")
     finally:
         db.close()
 

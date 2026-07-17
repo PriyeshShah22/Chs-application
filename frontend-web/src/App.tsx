@@ -1,7 +1,7 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { lazy, Suspense } from "react";
-import { LoadingPanel } from "./components/StateViews";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import AppLayout from "./components/AppLayout";
+import { LoadingPanel } from "./components/StateViews";
 import { useAuthStore } from "./store/auth";
 
 const Login = lazy(() => import("./pages/Login"));
@@ -14,27 +14,30 @@ const Notices = lazy(() => import("./pages/Notices"));
 const Residents = lazy(() => import("./pages/Residents"));
 const AI = lazy(() => import("./pages/AI"));
 const Admin = lazy(() => import("./pages/Admin"));
+const Committee = lazy(() => import("./pages/Committee"));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const token = useAuthStore((s) => s.accessToken);
+  const token = useAuthStore((state) => state.accessToken);
   const location = useLocation();
   if (!token) return <Navigate to="/login" state={{ from: location }} replace />;
   return <>{children}</>;
 }
 
+function RequireRole({ role, children }: { role: "admin" | "committee"; children: React.ReactNode }) {
+  const user = useAuthStore((state) => state.user);
+  const roles = user?.roles.map((item) => item.name) ?? [];
+  const allowed = role === "admin"
+    ? Boolean(user?.is_superuser || roles.includes("admin"))
+    : Boolean(user?.is_superuser || roles.includes("admin") || roles.includes("committee"));
+  return allowed ? <>{children}</> : <Navigate to="/" replace />;
+}
+
 export default function App() {
-  return (
-    <Suspense fallback={<LoadingPanel />}><Routes>
+  return <Suspense fallback={<LoadingPanel />}>
+    <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
-      <Route
-        path="/"
-        element={
-          <RequireAuth>
-            <AppLayout />
-          </RequireAuth>
-        }
-      >
+      <Route path="/" element={<RequireAuth><AppLayout /></RequireAuth>}>
         <Route index element={<Dashboard />} />
         <Route path="complaints" element={<Complaints />} />
         <Route path="bills" element={<Bills />} />
@@ -42,9 +45,10 @@ export default function App() {
         <Route path="notices" element={<Notices />} />
         <Route path="residents" element={<Residents />} />
         <Route path="ai" element={<AI />} />
-        <Route path="admin" element={<Admin />} />
+        <Route path="admin" element={<RequireRole role="admin"><Admin /></RequireRole>} />
+        <Route path="committee" element={<RequireRole role="committee"><Committee /></RequireRole>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
-    </Routes></Suspense>
-  );
+    </Routes>
+  </Suspense>;
 }

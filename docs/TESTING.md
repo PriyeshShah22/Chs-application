@@ -11,7 +11,7 @@ curl http://localhost:8000/health
 # 2. Login (use any seeded account)
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@greenpark.com","password":"Admin@12345"}'
+  -d '{"email":"admin@society.com","password":"Admin@12345"}'
 
 # 3. List notices
 TOKEN="<paste access_token here>"
@@ -30,7 +30,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 
 1. `cd frontend-web && npm install && npm run dev`
 2. Open `http://localhost:5173`
-3. Sign in as `admin@greenpark.com / Admin@12345`
+3. Sign in as `admin@society.com / Admin@12345`
 4. Check each sidebar item — Dashboard, Complaints, Bills, Visitors, Notices, AI Assistant, Admin.
 
 ## Smoke test the mobile app
